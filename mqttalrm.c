@@ -85,6 +85,7 @@ struct item {
 	int hh, mm;
 	int wdays; /* bitmask */
 	int enabled;
+	int skip;
 
 	/* state */
 	int pending;
@@ -156,7 +157,7 @@ long next_alarm(const struct item *it)
 		tm.tm_min = it->mm;
 		tnext = mktime(&tm);
 	}
-	if (tnext < tnow) {
+	if (tnext <= tnow) {
 		tm.tm_mday += 1;
 		tnext = mktime(&tm);
 		if (tm.tm_hour != it->hh || tm.tm_min != it->mm) {
@@ -287,6 +288,13 @@ static void on_alrm(void *dat)
 {
 	struct item *it = dat;
 
+	if (it->skip) {
+		mosquitto_publish(mosq, NULL, csprintf("%s/skip", it->topic),
+				0, NULL, mqtt_qos, 1);
+		it->skip = 0;
+		reschedule_alrm(it);
+		return;
+	}
 	it->pending = 1;
 	pub_alarms();
 	libt_add_timeout(60*60, stop_alrm, it);
@@ -356,6 +364,8 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 		}
 		parse_schedule(it, msg->payload ?: "");
 		reschedule_alrm(it);
+	} else if (!strcmp(tok, "/skip")) {
+		it->skip = strtoul(msg->payload ?: "0", 0, 0);
 	} else if (!strcmp(tok, "/enable")) {
 		it->enabled = strtoul(msg->payload ?: "0", 0, 0);
 		reschedule_alrm(it);

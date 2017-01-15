@@ -41,6 +41,7 @@ static const char help_msg[] =
 	" -v, --verbose		Be more verbose\n"
 	" -m, --mqtt=HOST[:PORT]Specify alternate MQTT host+port\n"
 	" -c, --ctrl=PREFIX	Give MQTT topic prefix for alarm control (default alarmctl)\n"
+	" -s, --snooze=TIME	Specify snooze time (default 9m)\n"
 	"\n"
 	"Paramteres\n"
 	" PATTERN	A pattern to subscribe for\n"
@@ -54,13 +55,14 @@ static struct option long_opts[] = {
 
 	{ "mqtt", required_argument, NULL, 'm', },
 	{ "ctrl", required_argument, NULL, 'c', },
+	{ "snooze", required_argument, NULL, 's', },
 	{ },
 };
 #else
 #define getopt_long(argc, argv, optstring, longopts, longindex) \
 	getopt((argc), (argv), (optstring))
 #endif
-static const char optstring[] = "Vv?m:c:";
+static const char optstring[] = "Vv?m:c:s:";
 
 /* signal handler */
 static volatile int sigterm;
@@ -72,6 +74,7 @@ static const char *mqtt_ctlprefix = "alarmctl";
 static int mqtt_ctlprefix_len;
 static int mqtt_keepalive = 10;
 static int mqtt_qos = 1;
+static int snooze_time = 9*60;
 
 /* state */
 static struct mosquitto *mosq;
@@ -89,6 +92,7 @@ struct item {
 
 	/* state */
 	int pending;
+	int snoozed;
 };
 
 struct item *items;
@@ -265,7 +269,7 @@ static void pub_alarms(void)
 
 	*str = 0;
 	for (it = items; it; it = it->next) {
-		if (it->pending)
+		if (it->pending && !it->snoozed)
 			str += sprintf(str, "%s%s", (str > buf) ? " " : "",
 					strrchr(it->topic, '/')+1);
 	}
@@ -280,6 +284,7 @@ static void stop_alrm(void *dat)
 	struct item *it = dat;
 
 	it->pending = 0;
+	it->snoozed = 0;
 	pub_alarms();
 	reschedule_alrm(it);
 }
@@ -288,6 +293,7 @@ static void on_alrm(void *dat)
 {
 	struct item *it = dat;
 
+	it->snoozed = 0;
 	if (it->skip) {
 		mosquitto_publish(mosq, NULL, csprintf("%s/skip", it->topic),
 				0, NULL, mqtt_qos, 1);
@@ -345,6 +351,15 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 			}
 			pub_alarms();
 		} else if (!strcmp(tok, "snooze")) {
+			for (it = items; it; it = it->next) {
+				if (!it->pending)
+					continue;
+				it->snoozed = 1;
+				libt_remove_timeout(stop_alrm, it);
+				libt_add_timeout(snooze_time, on_alrm, it);
+				mylog(LOG_INFO, "snoozed %s for %us", it->topic, snooze_time);
+			}
+			pub_alarms();
 		} else if (!strcmp(tok, "alarms")) {
 			/* got back cached value */
 			libt_add_timeout(10*60, stop_cached_alarm, NULL);
@@ -382,7 +397,7 @@ static void my_exit(void)
 int main(int argc, char *argv[])
 {
 	int opt, ret, waittime;
-	char *str;
+	char *str, *endp;
 	const char *cstr;
 	char mqtt_name[32];
 	int logmask = LOG_UPTO(LOG_NOTICE);
@@ -415,6 +430,20 @@ int main(int argc, char *argv[])
 		break;
 	case 'c':
 		mqtt_ctlprefix = optarg;
+		break;
+	case 's':
+		snooze_time = strtoul(optarg, &endp, 0);
+		switch (*endp) {
+		case 'w':
+			snooze_time *= 7;
+		case 'd':
+			snooze_time *= 24;
+		case 'h':
+			snooze_time *= 60;
+		case 'm':
+			snooze_time *= 60;
+			break;
+		}
 		break;
 
 	case '?':

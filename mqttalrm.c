@@ -93,6 +93,7 @@ struct item {
 	/* state */
 	int pending;
 	int snoozed;
+	int tmp;
 };
 
 struct item *items;
@@ -289,21 +290,34 @@ static void stop_alrm(void *dat)
 	reschedule_alrm(it);
 }
 
+static void raise_alrm(struct item *it)
+{
+	it->snoozed = 0;
+	it->pending = 1;
+	libt_add_timeout(60*60, stop_alrm, it);
+	if (it->skip) {
+		/* cancel skip when triggered directly */
+		mosquitto_publish(mosq, NULL, csprintf("%s/skip", it->topic),
+				0, NULL, mqtt_qos, 1);
+		it->skip = 0;
+	}
+}
+
 static void on_alrm(void *dat)
 {
 	struct item *it = dat;
 
-	it->snoozed = 0;
 	if (it->skip) {
 		mosquitto_publish(mosq, NULL, csprintf("%s/skip", it->topic),
 				0, NULL, mqtt_qos, 1);
 		it->skip = 0;
+		it->snoozed = 0;
+		it->pending = 0;
 		reschedule_alrm(it);
 		return;
 	}
-	it->pending = 1;
+	raise_alrm(it);
 	pub_alarms();
-	libt_add_timeout(60*60, stop_alrm, it);
 }
 
 static void reschedule_alrm(struct item *it)
@@ -323,11 +337,6 @@ static void reschedule_alrm(struct item *it)
 	}
 }
 
-static void stop_cached_alarm(void *dat)
-{
-	pub_alarms();
-}
-
 static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitto_message *msg)
 {
 	char *tok;
@@ -342,6 +351,7 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 			for (it = items; it; it = it->next) {
 				if (it->pending) {
 					libt_remove_timeout(stop_alrm, it);
+					it->snoozed = 0;
 					it->pending = 0;
 					/* assume this alarm has been enabled */
 					delay = next_alarm(it);
@@ -361,8 +371,44 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 			}
 			pub_alarms();
 		} else if (!strcmp(tok, "alarms")) {
-			/* got back cached value */
-			libt_add_timeout(10*60, stop_cached_alarm, NULL);
+			char *payload;
+			int dirty = 0;
+
+			payload = strndup((char *)msg->payload, msg->payloadlen);
+
+			/* clear all tmp values */
+			for (it = items; it; it = it->next)
+				it->tmp = 0;
+			/* mark new alarms */
+			for (tok = strtok(payload, " \t"); tok; tok = strtok(NULL, " \t")) {
+				for (it = items; it; it = it->next) {
+					if (!strcmp(it->topic, tok)) {
+						it->tmp = 1;
+						break;
+					}
+				}
+			}
+			free(payload);
+			/* get the different state */
+			for (it = items; it; it = it->next) {
+				if (it->tmp == (it->pending && !it->snoozed))
+					continue;
+				if (!dirty++)
+					mylog(LOG_INFO, "recv'd alarms '%s'", (char *)msg->payload ?: "");
+				if (it->tmp)
+					raise_alrm(it);
+				else {
+					/* dismiss alarm */
+					libt_remove_timeout(stop_alrm, it);
+					it->snoozed = 0;
+					it->pending = 0;
+					/* assume this alarm has been enabled */
+					delay = next_alarm(it);
+					libt_add_timeout(delay, on_alrm, it);
+					mylog(LOG_INFO, "scheduled '%s' in %lus", it->topic, delay);
+				}
+			}
+			/* no need to publish alarms again */
 		}
 		return;
 	}

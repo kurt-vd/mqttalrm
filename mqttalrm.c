@@ -271,7 +271,7 @@ static void pub_alarms(void)
 	for (it = items; it; it = it->next) {
 		if (it->pending && !it->snoozed)
 			str += sprintf(str, "%s%s", (str > buf) ? " " : "",
-					strrchr(it->topic, '/')+1);
+					it->topic);
 	}
 	mosquitto_publish(mosq, NULL, csprintf("%s/alarms", mqtt_ctlprefix),
 			strlen(buf), buf, mqtt_qos, 1);

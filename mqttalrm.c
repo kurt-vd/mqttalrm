@@ -112,13 +112,13 @@ static int parse_schedule(struct item *it, char *str)
 	/* grab second part */
 	str = strtok(NULL, " \t") ?: "mtwtfss";
 	it->wdays = 0;
-	for (j = 0; j < 7; ++j) {
+	for (j = 0; str[j] && (j < 7); ++j) {
 		if (!strchr("-_", str[j]))
 			/* enable this day,
 			 * wday is struct tm.tm_wday compatible
 			 * (sunday == 0)
 			 */
-			it->wdays |= 1 << (j % 7);
+			it->wdays |= 1 << ((j+1) % 7);
 	}
 	return 0;
 }

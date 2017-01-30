@@ -87,6 +87,7 @@ struct item {
 	int topiclen;
 	int hh, mm;
 	int wdays; /* bitmask */
+	int valid; /* definition has been seen */
 	int enabled;
 	int skip;
 
@@ -328,7 +329,7 @@ static void reschedule_alrm(struct item *it)
 		pub_alarms();
 	}
 	libt_remove_timeout(on_alrm, it);
-	if (it->enabled) {
+	if (it->valid && it->enabled) {
 		long delay;
 
 		delay = next_alarm(it);
@@ -429,6 +430,8 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 			return;
 		}
 		parse_schedule(it, msg->payload ?: "");
+		/* mark as valid */
+		it->valid = 1;
 		reschedule_alrm(it);
 	} else if (!strcmp(tok, "/skip")) {
 		it->skip = strtoul(msg->payload ?: "0", 0, 0);

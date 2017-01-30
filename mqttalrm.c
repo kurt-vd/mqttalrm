@@ -420,6 +420,11 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 		return;
 	if (!strcmp(tok, "/alarm")) {
 		if (!msg->payloadlen) {
+			/* flush potential MQTT leftovers */
+			mosquitto_publish(mosq, NULL, csprintf("%s/skip", it->topic),
+					0, NULL, mqtt_qos, 1);
+			mosquitto_publish(mosq, NULL, csprintf("%s/enable", it->topic),
+					0, NULL, mqtt_qos, 1);
 			drop_item(it);
 			return;
 		}

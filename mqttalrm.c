@@ -436,7 +436,7 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 	} else if (!strcmp(tok, "/skip")) {
 		it->skip = strtoul(msg->payload ?: "0", 0, 0);
 	} else if (!strcmp(tok, "/enable")) {
-		it->enabled = strtoul(msg->payload ?: "0", 0, 0);
+		it->enabled = strtoul(msg->payload ?: "1", 0, 0);
 		reschedule_alrm(it);
 	} else
 		return;

@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <title>my home</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<script src="https://code.jquery.com/jquery-1.12.4.js"> type='text/javascript'></script>
+	<script src='https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.js' type='text/javascript'></script>
+	<script type="text/javascript">
+/* global variables */
+host = 'localhost';//'127.0.0.1';
+port = 9001;
+topics = [ 'alarmctl/#', 'alarms/+/+' ]; // topics to subscribe to
+useTLS = false;
+username = null;
+password = null;
+
+path = '';
+// path as in "scheme:[//[user:password@]host[:port]][/]path[?query][#fragment]"
+//    defaults to "/mqtt"
+//    may include query and fragment
+//
+// path = "/mqtt";
+// path = "/data/cloud?device=12345";
+
+cleansession = true;
+	</script>
+	<!-- overrule from config.cgi --!>
+	<script src="config.cgi" type="text/javascript"></script>
+	<script type="text/javascript">
+var mqtt;
+var reconnectTimeout = 1000;
+var changingtopic;
+
+function MQTTconnect()
+{
+	if (typeof path == "undefined") {
+		path = '';
+	}
+	mqtt = new Paho.MQTT.Client(
+			host,
+			port,
+			path,
+			"web_" + parseInt(Math.random() * 100, 10)
+			);
+	var options = {
+		timeout: 3,
+		useSSL: useTLS,
+		keepAliveInterval: 10,
+		cleanSession: cleansession,
+		onSuccess: onConnect,
+		onFailure: function (message) {
+				$('#mqtt').css('background-color', 'red');
+				setTimeout(MQTTconnect, reconnectTimeout);
+			}
+	};
+
+	mqtt.onConnectionLost = onConnectionLost;
+	mqtt.onMessageArrived = onMessageArrived;
+
+	if (username != null) {
+		options.userName = username;
+		options.password = password;
+	}
+	//console.log("Host="+ host + ", port=" + port + ", path=" + path + " TLS = " + useTLS + " username=" + username + " password=" + password);
+	mqtt.connect(options);
+	$('#mqtt')
+		.val(host+':'+port+path);
+}
+
+function onConnect()
+{
+	$('#mqtt')
+		.css('background-color', 'green')
+		.css('color', 'white')
+		.css('font-weight', 'bold');
+	console.log('connected to ' + host + ':' + port + path);
+
+	for (var j in topics) {
+		mqtt.subscribe(topics[j], {qos: 0});
+		console.log('subscribed to ' + topics[j]);
+	}
+}
+
+function onConnectionLost(response)
+{
+	$('#mqtt').css('background-color', 'orange');
+	$('#alarms').empty();
+	setTimeout(MQTTconnect, reconnectTimeout);
+	console.log('connected lost, ' + response.errorMessage);
+
+};
+
+function onMessageArrived(message)
+{
+	var topic = message.destinationName;
+	var payload = message.payloadString;
+	var id = '#'+topic.replace(/\//g,'_');
+
+	//console.log("" + topic + " = '" + payload + "'");
+	if (topic == 'alarmctl/dismiss' || topic == 'alarmctl/snooze')
+		return;
+	if (topic.match(/^alarms\//) && payload.length && !$(id).length) {
+		changingtopic = topic;
+		/* add new object */
+		name = topic.replace(/^[^\/]*\//,'').replace(/\/.*$/,'');
+		console.log("new alarm '" + name + "'");
+		$('#alarms').append(
+			"<p id='"+name+"'>"+
+			"<button value='' id='alarms_"+name+"_enable' onclick='toggle(this)' onchange='vcolor(this)'>"+name+"</button>"+
+			"&nbsp;<input type='text' id='alarms_"+name+"_alarm' size='13' onchange='publish(this)' />"+
+			"&nbsp;<button value='' id='alarms_"+name+"_skip' onclick='toggle(this)' onchange='vcolorskip(this)'>skip</button>"+
+			"&nbsp;<button value='alarms_"+name+"_alarm' onclick='deletealrm(this)'>del</button>"+
+			"</p>");
+	} else if (topic.match(/^alarms\/.*\/alarm$/) && !payload.length && $(id).length) {
+		/* time to delete */
+		console.log("remove alarm '" + name + "'");
+		alarmid = '#'+name;
+		$(alarmid).remove();
+		return;
+	}
+	if ($(id).length) {
+		changingtopic = topic;
+		$(id).val(payload);
+		$(id).trigger('change');
+	}
+	changingtopic = '';
+};
+
+function raiseevent(e)
+{
+	topic = e.getAttribute('id').replace(/_/g,'/');
+	mqtt.send(topic, ''+e.value, 1, false);
+	//console.log(topic + " > '" + e.value + "'");
+}
+
+function publish(e)
+{
+	topic = e.getAttribute('id').replace(/_/g,'/');
+	if (topic == changingtopic)
+		return;
+	//console.log(topic + " > '" + e.value + "'");
+	mqtt.send(topic, ''+e.value, 1, !e.getAttribute('volatile')); 
+}
+
+function toggle(e)
+{
+	e.value = (e.value == 0) ? 1 : 0;
+	topic = e.getAttribute('id').replace(/_/g,'/');
+	//console.log(topic + " > '" + e.value + "'");
+	mqtt.send(topic, ''+ e.value, 1, true);
+}
+function vcolor(e)
+{
+	e.style.background = (e.value == 0) ? 'red' : 'green';
+	e.style.color = 'white';
+	e.style.fontWeight = 'bold';
+}
+function vcolorskip(e)
+{
+	if (e.value == 1) {
+		e.style.background = 'red';
+		e.style.color = 'white';
+		e.style.fontWeight = 'bold';
+	} else {
+		e.style.background = 'silver';
+		e.style.color = 'initial';
+		e.style.fontWeight = 'initial';
+	}
+}
+
+function deletealrm(e)
+{
+	topic = e.value.replace(/_/g,'/');
+	//console.log(topic + " > ''");
+	mqtt.send(topic, '', 1, true);
+}
+
+/* new alarm functions */
+function testfornew(e)
+{
+	$('#newbttn').prop('disabled', !e.value.length);
+	//console.log('test for new: ' + $('#newbttn').prop('disabled', !e.value.length));
+}
+
+function newalarm(name)
+{
+	if (name.length) {
+		//console.log('create new alarm '+name);
+		mqtt.send('alarms/'+name+'/alarm', '12h00', 1, true);
+		$('#newalarm').val('');
+	}
+}
+
+$(document).ready(function(){ MQTTconnect(); });
+
+    </script>
+  </head>
+  <body>
+    <div>
+	<div>
+		Status
+		<input type='button' value='MQTT' id='mqtt' /><br />
+		<input type='text' id='alarmctl_alarms' size='80' disabled /><br />
+		<button value='all' id='alarmctl_dismiss' onclick='raiseevent(this)'>dismiss</button>
+		<button value='all' id='alarmctl_snooze' onclick='raiseevent(this)'>snooze</button>
+	</div>
+	<hr />
+	Alarms<br />
+	<div id='alarms'>
+	</div>
+	<hr />
+	<input type='text' id='newalarm' size=40 onkeyup='testfornew(this)'/>
+	<button id='newbttn' onclick="newalarm($('#newalarm').val())">add new</button>
+    </div>
+  </body>
+</html>

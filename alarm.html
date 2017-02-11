@@ -10,7 +10,7 @@
 /* global variables */
 host = 'localhost';//'127.0.0.1';
 port = 9001;
-topics = [ 'alarmctl/#', 'alarms/+/+' ]; // topics to subscribe to
+topics = [ 'alarms/+/+' ]; // topics to subscribe to
 useTLS = false;
 username = null;
 password = null;
@@ -98,20 +98,30 @@ function onMessageArrived(message)
 	var id = '#'+topic.replace(/\//g,'_');
 
 	//console.log("" + topic + " = '" + payload + "'");
-	if (topic == 'alarmctl/dismiss' || topic == 'alarmctl/snooze')
+	if (topic.match(/^alarms\/[^\/]+\/(dismiss|snooze)/)) {
+		console.log('ignored '+topic);
 		return;
+	}
 	if (topic.match(/^alarms\//) && payload.length && !$(id).length) {
 		changingtopic = topic;
 		/* add new object */
 		name = topic.replace(/^[^\/]*\//,'').replace(/\/.*$/,'');
+		if (!name.length) {
+			console.log('ignored '+topic);
+			return;
+		}
 		console.log("new alarm '" + name + "'");
 		$('#alarms').append(
 			"<p id='"+name+"'>"+
 			"<button value='' id='alarms_"+name+"_enable' onclick='toggle(this)' onchange='vcolor(this)'>"+name+"</button>"+
-			"&nbsp;<input type='text' id='alarms_"+name+"_alarm' size='13' onchange='publish(this)' />"+
+			"&nbsp;<input type='text' id='alarms_"+name+"_alarm' class='alrmedit' size='13' onchange='publish(this)' />"+
 			"&nbsp;<button value='' id='alarms_"+name+"_skip' onclick='toggle(this)' onchange='vcolorskip(this)'>skip</button>"+
-			"&nbsp;<button value='alarms_"+name+"_alarm' onclick='deletealrm(this)'>del</button>"+
+			"&nbsp;<button value='alarms_"+name+"_alarm' class='alrmaddremove' onclick='deletealrm(this)'>del</button>"+
+			"<button value='' id='alarms_"+name+"_state' onclick='snooze(this)' onchange='snoozestate(this)'>...</button>"+
 			"</p>");
+		btnstate = '#alarms_'+name+'_state';
+		$(btnstate).hide();
+		$('#manage').trigger('change');
 	} else if (topic.match(/^alarms\/.*\/alarm$/) && !payload.length && $(id).length) {
 		/* time to delete */
 		console.log("remove alarm '" + name + "'");
@@ -169,6 +179,31 @@ function vcolorskip(e)
 	}
 }
 
+function snooze(e)
+{
+	topic = e.getAttribute('id').replace(/_/g,'/');
+	if (e.value == 'snoozed')
+		/* dismiss */
+		mqtt.send(topic, 'off', 1, true);
+	else if (e.value == 'on')
+		/* dismiss */
+		mqtt.send(topic, 'snoozed', 1, true);
+}
+
+function snoozestate(e)
+{
+	if (e.value == 'off')
+		/* hide */
+		e.style.display = 'none';
+	else
+		/* show */
+		e.style.display = '';
+	if (e.value == 'on')
+		e.style.background = 'orange';
+	else if (e.value == 'snoozed')
+		e.style.background = 'yellow';
+}
+
 function deletealrm(e)
 {
 	topic = e.value.replace(/_/g,'/');
@@ -192,7 +227,7 @@ function newalarm(name)
 	}
 }
 
-$(document).ready(function(){ MQTTconnect(); });
+$(document).ready(function(){ MQTTconnect(); $('#manage').trigger('change'); });
 
     </script>
   </head>
@@ -201,17 +236,21 @@ $(document).ready(function(){ MQTTconnect(); });
 	<div>
 		Status
 		<input type='button' value='MQTT' id='mqtt' /><br />
-		<input type='text' id='alarmctl_alarms' size='80' disabled /><br />
-		<button value='all' id='alarmctl_dismiss' onclick='raiseevent(this)'>dismiss</button>
-		<button value='all' id='alarmctl_snooze' onclick='raiseevent(this)'>snooze</button>
+		<input type='text' id='alarms__alarms' size='80' disabled /><br />
+		<button value='all' id='alarms__dismiss' onclick='raiseevent(this)'>dismiss</button>
+		<button value='all' id='alarms__snooze' onclick='raiseevent(this)'>snooze</button>
 	</div>
 	<hr />
 	Alarms<br />
 	<div id='alarms'>
 	</div>
 	<hr />
-	<input type='text' id='newalarm' size=40 onkeyup='testfornew(this)'/>
-	<button id='newbttn' onclick="newalarm($('#newalarm').val())">add new</button>
+	<input id='manage' type='checkbox' onchange="
+		$('.alrmaddremove').toggle(this.checked);
+		$('.alrmedit').prop('disabled', !this.checked)" />manage<br />
+	<input class='alrmaddremove' type='text' id='newalarm' size=40 onkeyup='testfornew(this)'/>
+	<button class='alrmaddremove' id='newbttn' onclick="newalarm($('#newalarm').val())">add new</button>
+	</div>
     </div>
   </body>
 </html>

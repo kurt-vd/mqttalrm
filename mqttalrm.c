@@ -17,7 +17,7 @@
 
 #include "lib/libt.h"
 
-#define NAME "mqttoff"
+#define NAME "mqttalrm"
 #ifndef VERSION
 #define VERSION "<undefined version>"
 #endif
@@ -40,7 +40,6 @@ static const char help_msg[] =
 	" -V, --version		Show version\n"
 	" -v, --verbose		Be more verbose\n"
 	" -m, --mqtt=HOST[:PORT]Specify alternate MQTT host+port\n"
-	" -c, --ctrl=PREFIX	Give MQTT topic prefix for alarm control (default alarmctl)\n"
 	" -s, --snooze=TIME	Specify snooze time (default 9m)\n"
 	"\n"
 	"Paramteres\n"
@@ -54,7 +53,6 @@ static struct option long_opts[] = {
 	{ "verbose", no_argument, NULL, 'v', },
 
 	{ "mqtt", required_argument, NULL, 'm', },
-	{ "ctrl", required_argument, NULL, 'c', },
 	{ "snooze", required_argument, NULL, 's', },
 	{ },
 };
@@ -62,7 +60,7 @@ static struct option long_opts[] = {
 #define getopt_long(argc, argv, optstring, longopts, longindex) \
 	getopt((argc), (argv), (optstring))
 #endif
-static const char optstring[] = "Vv?m:c:s:";
+static const char optstring[] = "Vv?m:s:";
 
 /* signal handler */
 static volatile int sigterm;
@@ -70,11 +68,19 @@ static volatile int sigterm;
 /* MQTT parameters */
 static const char *mqtt_host = "localhost";
 static int mqtt_port = 1883;
-static const char *mqtt_ctlprefix = "alarmctl";
-static int mqtt_ctlprefix_len;
 static int mqtt_keepalive = 10;
 static int mqtt_qos = 1;
 static int snooze_time = 9*60;
+
+/* alarm states */
+static const char *const alrm_states[] = {
+#define ALRM_OFF	0
+	[0] = "off",
+#define ALRM_ON		1
+	[1] = "on",
+#define ALRM_SNOOZED	2
+	[2] = "snoozed",
+};
 
 /* state */
 static struct mosquitto *mosq;
@@ -91,13 +97,12 @@ struct item {
 	int enabled;
 	int skip;
 
-	/* state */
-	int pending;
-	int snoozed;
-	int tmp;
+	int state;
 };
 
 struct item *items;
+/* each 'root' topic to listen for alarms */
+static char **alrm_root_topics;
 
 static void reschedule_alrm(struct item *it);
 /* utils */
@@ -218,8 +223,8 @@ static struct item *get_item(const char *ctopic)
 	if (!topic)
 		return NULL;
 	sep = strrchr(topic, '/');
-	if (!sep) {
-		/* impossible */
+	if (!sep /* should not happen */ || (*(sep-1) == '/')) {
+		/* detect 'alarms//+' patterns, i.e. global controls */
 		free(topic);
 		return NULL;
 	}
@@ -263,79 +268,98 @@ static void drop_item(struct item *it)
 	free(it);
 }
 
+static int hold_pub_alarms;
 static void pub_alarms(void)
 {
 	struct item *it;
 	static char buf[2048];
 	char *str = buf;
+	char **tpcs;
 
+	if (hold_pub_alarms)
+		return;
 	*str = 0;
 	for (it = items; it; it = it->next) {
-		if (it->pending && !it->snoozed)
+		if (it->state == ALRM_ON)
 			str += sprintf(str, "%s%s", (str > buf) ? " " : "",
 					it->topic);
 	}
-	mosquitto_publish(mosq, NULL, csprintf("%s/alarms", mqtt_ctlprefix),
-			strlen(buf), buf, mqtt_qos, 1);
 	mylog(LOG_INFO, "alarms '%s'", buf);
+	for (tpcs = alrm_root_topics; *tpcs; ++tpcs)
+		mosquitto_publish(mosq, NULL, csprintf("%s//alarms", *tpcs),
+				strlen(buf), buf, mqtt_qos, 1);
+}
+
+static void pub_alarms_hold(int v)
+{
+	hold_pub_alarms = v;
+	if (!v)
+		pub_alarms();
+}
+
+static void pub_alrm_state(struct item *it)
+{
+	const char *state = alrm_states[it->state];
+
+	mosquitto_publish(mosq, NULL, csprintf("%s/state", it->topic),
+			strlen(state), state, mqtt_qos, 1);
+	pub_alarms();
 }
 
 /* timeout handlers */
-static void stop_alrm(void *dat)
+static void alrm_toolong(void *dat)
 {
-	struct item *it = dat;
+	struct item * it = dat;
 
-	it->pending = 0;
-	it->snoozed = 0;
-	pub_alarms();
+	mylog(LOG_INFO, "self-destruct %s", it->topic);
 	reschedule_alrm(it);
-}
-
-static void raise_alrm(struct item *it)
-{
-	it->snoozed = 0;
-	it->pending = 1;
-	libt_add_timeout(60*60, stop_alrm, it);
-	if (it->skip) {
-		/* cancel skip when triggered directly */
-		mosquitto_publish(mosq, NULL, csprintf("%s/skip", it->topic),
-				0, NULL, mqtt_qos, 1);
-		it->skip = 0;
-	}
 }
 
 static void on_alrm(void *dat)
 {
 	struct item *it = dat;
 
-	if (it->skip) {
+	if (it->skip && (it->state == ALRM_OFF)) {
 		mosquitto_publish(mosq, NULL, csprintf("%s/skip", it->topic),
 				0, NULL, mqtt_qos, 1);
 		it->skip = 0;
-		it->snoozed = 0;
-		it->pending = 0;
 		reschedule_alrm(it);
 		return;
 	}
-	raise_alrm(it);
-	pub_alarms();
+	it->state = ALRM_ON;
+	pub_alrm_state(it);
+	libt_add_timeout(60*60, alrm_toolong, it);
 }
 
+static void snooze_alrm(struct item *it)
+{
+	libt_remove_timeout(alrm_toolong, it);
+	libt_add_timeout(snooze_time, on_alrm, it);
+	mylog(LOG_INFO, "snoozed %s for %us", it->topic, snooze_time);
+	if (it->state != ALRM_SNOOZED) {
+		it->state = ALRM_SNOOZED;
+		pub_alrm_state(it);
+	}
+}
+
+/* dismiss & reschedule do the same thing */
+#define dismiss_alrm reschedule_alrm
 static void reschedule_alrm(struct item *it)
 {
-	if (it->pending) {
-		libt_remove_timeout(stop_alrm, it);
-		it->pending = 0;
-		pub_alarms();
-	}
 	libt_remove_timeout(on_alrm, it);
+	libt_remove_timeout(alrm_toolong, it);
+	if (it->state != ALRM_OFF) {
+		it->state = ALRM_OFF;
+		pub_alrm_state(it);
+	}
 	if (it->valid && it->enabled) {
 		long delay;
 
 		delay = next_alarm(it);
 		libt_add_timeout(delay, on_alrm, it);
 		mylog(LOG_INFO, "scheduled '%s' in %lus", it->topic, delay);
-	}
+	} else
+		mylog(LOG_INFO, "disabled '%s'", it->topic);
 }
 
 static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitto_message *msg)
@@ -343,88 +367,37 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 	char *tok;
 	struct item *it;
 
-	if (!strncmp(msg->topic, mqtt_ctlprefix, mqtt_ctlprefix_len) &&
-			msg->topic[mqtt_ctlprefix_len] == '/') {
-		long delay;
-
-		tok = msg->topic + mqtt_ctlprefix_len + 1;
-		if (!strcmp(tok, "dismiss")) {
-			for (it = items; it; it = it->next) {
-				if (it->pending) {
-					libt_remove_timeout(stop_alrm, it);
-					it->snoozed = 0;
-					it->pending = 0;
-					/* assume this alarm has been enabled */
-					delay = next_alarm(it);
-					libt_add_timeout(delay, on_alrm, it);
-					mylog(LOG_INFO, "scheduled '%s' in %lus", it->topic, delay);
-				}
-			}
-			pub_alarms();
-		} else if (!strcmp(tok, "snooze")) {
-			for (it = items; it; it = it->next) {
-				if (!it->pending)
-					continue;
-				it->snoozed = 1;
-				libt_remove_timeout(stop_alrm, it);
-				libt_add_timeout(snooze_time, on_alrm, it);
-				mylog(LOG_INFO, "snoozed %s for %us", it->topic, snooze_time);
-			}
-			pub_alarms();
-		} else if (!strcmp(tok, "alarms")) {
-			char *payload;
-			int dirty = 0;
-
-			payload = strndup((char *)msg->payload, msg->payloadlen);
-
-			/* clear all tmp values */
-			for (it = items; it; it = it->next)
-				it->tmp = 0;
-			/* mark new alarms */
-			for (tok = strtok(payload, " \t"); tok; tok = strtok(NULL, " \t")) {
-				for (it = items; it; it = it->next) {
-					if (!strcmp(it->topic, tok)) {
-						it->tmp = 1;
-						break;
-					}
-				}
-			}
-			free(payload);
-			/* get the different state */
-			for (it = items; it; it = it->next) {
-				if (it->tmp == (it->pending && !it->snoozed))
-					continue;
-				if (!dirty++)
-					mylog(LOG_INFO, "recv'd alarms '%s'", (char *)msg->payload ?: "");
-				if (it->tmp)
-					raise_alrm(it);
-				else {
-					/* dismiss alarm */
-					libt_remove_timeout(stop_alrm, it);
-					it->snoozed = 0;
-					it->pending = 0;
-					/* assume this alarm has been enabled */
-					delay = next_alarm(it);
-					libt_add_timeout(delay, on_alrm, it);
-					mylog(LOG_INFO, "scheduled '%s' in %lus", it->topic, delay);
-				}
-			}
-			/* no need to publish alarms again */
-		}
-		return;
-	}
-
 	/* no item found */
 	it = get_item(msg->topic);
 	tok = strrchr(msg->topic ?: "", '/');
 	if (!tok)
 		return;
+	if (!it) {
+		/* global controls */
+		if (!strcmp(tok, "dismiss")) {
+			pub_alarms_hold(1);
+			for (it = items; it; it = it->next) {
+				if (it->state != ALRM_OFF)
+					dismiss_alrm(it);
+			}
+			pub_alarms_hold(0);
+		} else if (!strcmp(tok, "snooze")) {
+			pub_alarms_hold(1);
+			for (it = items; it; it = it->next) {
+				if (it->state != ALRM_OFF)
+					snooze_alrm(it);
+			}
+			pub_alarms_hold(0);
+		}
+	}
 	if (!strcmp(tok, "/alarm")) {
 		if (!msg->payloadlen) {
 			/* flush potential MQTT leftovers */
 			mosquitto_publish(mosq, NULL, csprintf("%s/skip", it->topic),
 					0, NULL, mqtt_qos, 1);
 			mosquitto_publish(mosq, NULL, csprintf("%s/enable", it->topic),
+					0, NULL, mqtt_qos, 1);
+			mosquitto_publish(mosq, NULL, csprintf("%s/state", it->topic),
 					0, NULL, mqtt_qos, 1);
 			drop_item(it);
 			return;
@@ -436,10 +409,46 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 	} else if (!strcmp(tok, "/skip")) {
 		it->skip = strtoul(msg->payload ?: "0", 0, 0);
 	} else if (!strcmp(tok, "/enable")) {
-		it->enabled = strtoul(msg->payload ?: "1", 0, 0);
-		reschedule_alrm(it);
-	} else
-		return;
+		int val = strtoul(msg->payload ?: "1", 0, 0);
+
+		if (val != it->enabled) {
+			it->enabled = val;
+			reschedule_alrm(it);
+		}
+	} else if (!strcmp(tok, "/dismiss") && (it->state != ALRM_OFF)) {
+		dismiss_alrm(it);
+	} else if (!strcmp(tok, "/snooze") && (it->state != ALRM_OFF)) {
+		snooze_alrm(it);
+	} else if (!strcmp(tok, "/state")) {
+		int newstate;
+
+		for (newstate = 0; newstate < sizeof(alrm_states)/sizeof(alrm_states[0]); ++newstate) {
+			if (!strcmp(msg->payload, alrm_states[newstate]))
+				break;
+		}
+		if (newstate >= sizeof(alrm_states)/sizeof(alrm_states[0]))
+			/* bad state supplied */
+			return;
+		if (it->state == newstate)
+			/* nothing to do */
+			return;
+		mylog(LOG_INFO, "new state %s = '%s'", msg->topic, alrm_states[newstate]);
+		it->state = newstate;
+		switch (newstate) {
+		case ALRM_OFF:
+			dismiss_alrm(it);
+			break;
+		case ALRM_ON:
+			libt_remove_timeout(on_alrm, it);
+			libt_add_timeout(60*60, alrm_toolong, it);
+			break;
+		case ALRM_SNOOZED:
+			libt_remove_timeout(alrm_toolong, it);
+			libt_add_timeout(snooze_time, on_alrm, it);
+			break;
+		}
+		pub_alarms();
+	}
 }
 
 static void my_exit(void)
@@ -482,9 +491,6 @@ int main(int argc, char *argv[])
 			mqtt_port = strtoul(str+1, NULL, 10);
 		}
 		break;
-	case 'c':
-		mqtt_ctlprefix = optarg;
-		break;
 	case 's':
 		snooze_time = strtoul(optarg, &endp, 0);
 		switch (*endp) {
@@ -510,9 +516,6 @@ int main(int argc, char *argv[])
 		break;
 	}
 
-	/* add defaults */
-	mqtt_ctlprefix_len = strlen(mqtt_ctlprefix ?: "");
-
 	atexit(my_exit);
 	openlog(NAME, LOG_PERROR, LOG_LOCAL2);
 	setlogmask(logmask);
@@ -533,15 +536,13 @@ int main(int argc, char *argv[])
 		mylog(LOG_ERR, "mosquitto_connect %s:%i: %s", mqtt_host, mqtt_port, mosquitto_strerror(ret));
 
 	/* SUBSCRIBE */
-	cstr = csprintf("%s/+", mqtt_ctlprefix);
-	ret = mosquitto_subscribe(mosq, NULL, cstr, mqtt_qos);
-	if (ret)
-		mylog(LOG_ERR, "mosquitto_subscribe '%s': %s", cstr, mosquitto_strerror(ret));
-
+	alrm_root_topics = argv+optind;
 	if (optind >= argc) {
 		ret = mosquitto_subscribe(mosq, NULL, "alarms/+/+", mqtt_qos);
 		if (ret)
 			mylog(LOG_ERR, "mosquitto_subscribe 'alarms/+/+': %s", mosquitto_strerror(ret));
+		/* re-assign the default */
+		alrm_root_topics = (char *[]){ "alarms", NULL, };
 	} else for (; optind < argc; ++optind) {
 		cstr = csprintf("%s/+/+", argv[optind]);
 		ret = mosquitto_subscribe(mosq, NULL, cstr, mqtt_qos);

@@ -106,23 +106,25 @@ static char **alrm_root_topics;
 
 static void reschedule_alrm(struct item *it);
 /* utils */
-static int parse_schedule(struct item *it, char *str)
+static int parse_time(struct item *it, char *str)
 {
 	char *next;
-	int value, j;
+	int value;
 
-	str = strtok(str, " \t");
 	if (!str)
 		return -1;
 	value = strtoul(str, &next, 10);
 	if (next <= str || !strchr(":hHuU", *next))
 		return -1;
-	str = next+1;
 	it->hh = value;
-	it->mm = strtoul(str, &next, 10);
+	it->mm = strtoul(next+1, NULL, 10);
+	return 0;
+}
 
-	/* grab second part */
-	str = strtok(NULL, " \t") ?: "mtwtfss";
+static int parse_repeat(struct item *it, char *str)
+{
+	int j;
+
 	it->wdays = 0;
 	for (j = 0; str[j] && (j < 7); ++j) {
 		if (!strchr("-_", str[j]))
@@ -393,6 +395,8 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 	if (!strcmp(tok, "/alarm")) {
 		if (!msg->payloadlen) {
 			/* flush potential MQTT leftovers */
+			mosquitto_publish(mosq, NULL, csprintf("%s/repeat", it->topic),
+					0, NULL, mqtt_qos, 1);
 			mosquitto_publish(mosq, NULL, csprintf("%s/skip", it->topic),
 					0, NULL, mqtt_qos, 1);
 			mosquitto_publish(mosq, NULL, csprintf("%s/enable", it->topic),
@@ -402,9 +406,12 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 			drop_item(it);
 			return;
 		}
-		parse_schedule(it, msg->payload ?: "");
+		parse_time(it, msg->payload ?: "");
 		/* mark as valid */
 		it->valid = 1;
+		reschedule_alrm(it);
+	} else if (!strcmp(tok, "/repeat")) {
+		parse_repeat(it, msg->payload ?: "");
 		reschedule_alrm(it);
 	} else if (!strcmp(tok, "/skip")) {
 		it->skip = strtoul(msg->payload ?: "0", 0, 0);

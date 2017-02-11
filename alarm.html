@@ -114,10 +114,11 @@ function onMessageArrived(message)
 		$('#alarms').append(
 			"<p id='"+name+"'>"+
 			"<button value='' id='alarms_"+name+"_enable' onclick='toggle(this)' onchange='vcolor(this)'>"+name+"</button>"+
-			"&nbsp;<input type='text' id='alarms_"+name+"_alarm' class='alrmedit' size='13' onchange='publish(this)' />"+
+			"&nbsp;<input type='text' id='alarms_"+name+"_alarm' class='alrmedit' size='5' onchange='publish(this)' />"+
+			"&nbsp;<input type='text' id='alarms_"+name+"_repeat' class='alrmedit' size='7' onchange='publish(this)' />"+
 			"&nbsp;<button value='' id='alarms_"+name+"_skip' onclick='toggle(this)' onchange='vcolorskip(this)'>skip</button>"+
 			"&nbsp;<button value='alarms_"+name+"_alarm' class='alrmaddremove' onclick='deletealrm(this)'>del</button>"+
-			"<button value='' id='alarms_"+name+"_state' onclick='snooze(this)' onchange='snoozestate(this)'>...</button>"+
+			"&nbsp;<button value='' id='alarms_"+name+"_state' onclick='snooze(this)' onchange='snoozestate(this)'>...</button>"+
 			"</p>");
 		btnstate = '#alarms_'+name+'_state';
 		$(btnstate).hide();

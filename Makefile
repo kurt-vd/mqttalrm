@@ -1,4 +1,4 @@
-PROGS	= mqttalrm
+PROGS	= mqttalrm mqttoff
 default	: $(PROGS)
 
 PREFIX	= /usr/local
@@ -16,6 +16,8 @@ VERSION := $(shell git describe --tags --always)
 CPPFLAGS += -DVERSION=\"$(VERSION)\"
 
 mqttalrm: lib/libt.o
+
+mqttoff: lib/libt.o
 
 install: $(PROGS)
 	$(foreach PROG, $(PROGS), install -vp -m 0777 $(INSTOPTS) $(PROG) $(DESTDIR)$(PREFIX)/bin/$(PROG);)

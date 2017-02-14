@@ -309,14 +309,6 @@ static void pub_alrm_state(struct item *it)
 }
 
 /* timeout handlers */
-static void alrm_toolong(void *dat)
-{
-	struct item * it = dat;
-
-	mylog(LOG_INFO, "self-destruct %s", it->topic);
-	reschedule_alrm(it);
-}
-
 static void on_alrm(void *dat)
 {
 	struct item *it = dat;
@@ -330,12 +322,10 @@ static void on_alrm(void *dat)
 	}
 	it->state = ALRM_ON;
 	pub_alrm_state(it);
-	libt_add_timeout(60*60, alrm_toolong, it);
 }
 
 static void snooze_alrm(struct item *it)
 {
-	libt_remove_timeout(alrm_toolong, it);
 	libt_add_timeout(snooze_time, on_alrm, it);
 	mylog(LOG_INFO, "snoozed %s for %us", it->topic, snooze_time);
 	if (it->state != ALRM_SNOOZED) {
@@ -349,7 +339,6 @@ static void snooze_alrm(struct item *it)
 static void reschedule_alrm(struct item *it)
 {
 	libt_remove_timeout(on_alrm, it);
-	libt_remove_timeout(alrm_toolong, it);
 	if (it->state != ALRM_OFF) {
 		it->state = ALRM_OFF;
 		pub_alrm_state(it);
@@ -447,10 +436,8 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 			break;
 		case ALRM_ON:
 			libt_remove_timeout(on_alrm, it);
-			libt_add_timeout(60*60, alrm_toolong, it);
 			break;
 		case ALRM_SNOOZED:
-			libt_remove_timeout(alrm_toolong, it);
 			libt_add_timeout(snooze_time, on_alrm, it);
 			break;
 		}

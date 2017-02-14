@@ -200,6 +200,7 @@ function snoozestate(e)
 	else
 		/* show */
 		e.style.display = '';
+	e.innerHTML = e.value;
 	if (e.value == 'on')
 		e.style.background = 'orange';
 	else if (e.value == 'snoozed')

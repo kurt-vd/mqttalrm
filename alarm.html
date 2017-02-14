@@ -102,7 +102,8 @@ function onMessageArrived(message)
 		console.log('ignored '+topic);
 		return;
 	}
-	if (topic.match(/^alarms\//) && payload.length && !$(id).length) {
+	mainid = id.replace(/_[^_]*$/, '_alarm');
+	if (!$(mainid).length) {
 		changingtopic = topic;
 		/* add new object */
 		name = topic.replace(/^[^\/]*\//,'').replace(/\/.*$/,'');
@@ -236,22 +237,19 @@ $(document).ready(function(){ MQTTconnect(); $('#manage').trigger('change'); });
     <div>
 	<div>
 		Status
-		<input type='button' value='MQTT' id='mqtt' /><br />
-		<input type='text' id='alarms__alarms' size='80' disabled /><br />
-		<button value='all' id='alarms__dismiss' onclick='raiseevent(this)'>dismiss</button>
-		<button value='all' id='alarms__snooze' onclick='raiseevent(this)'>snooze</button>
-	</div>
-	<hr />
-	Alarms<br />
-	<div id='alarms'>
-	</div>
-	<hr />
+		<input type='button' value='MQTT' id='mqtt' />
+		&nbsp;
 	<input id='manage' type='checkbox' onchange="
 		$('.alrmaddremove').toggle(this.checked);
 		$('.alrmedit').prop('disabled', !this.checked)" />manage<br />
 	<input class='alrmaddremove' type='text' id='newalarm' size=40 onkeyup='testfornew(this)'/>
 	<button class='alrmaddremove' id='newbttn' onclick="newalarm($('#newalarm').val())">add new</button>
 	</div>
+	<hr />
+	Alarms<br />
+	<div id='alarms'>
+	</div>
+	<hr />
     </div>
   </body>
 </html>

@@ -41,3 +41,7 @@ Run these commands (or start with your init system).
 
 A web gui using mosquitto websockets.
 This will allow you to add/remove alarms, control all sorts of things
+
+The html page added 1 extra **sleeptimer** within the alarms.
+mqttoff will pick it up, just as all alarm listeners.
+mqttalrm will never raise it due to its +/alarm abscense.

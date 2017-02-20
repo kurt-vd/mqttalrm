@@ -102,7 +102,7 @@ function onMessageArrived(message)
 		console.log('ignored '+topic);
 		return;
 	}
-	mainid = id.replace(/_[^_]*$/, '_alarm');
+	mainid = id.replace(/_[^_]*$/, '_state');
 	if (!$(mainid).length) {
 		changingtopic = topic;
 		/* add new object */
@@ -163,11 +163,30 @@ function toggle(e)
 	//console.log(topic + " > '" + e.value + "'");
 	mqtt.send(topic, ''+ e.value, 1, true);
 }
+function toggleonoff(e)
+{
+	e.value = (e.value == 'off') ? 'on' : 'off';
+	topic = e.getAttribute('id').replace(/_/g,'/');
+	//console.log(topic + " > '" + e.value + "'");
+	mqtt.send(topic, ''+ e.value, 1, true);
+}
 function vcolor(e)
 {
 	e.style.background = (e.value == 0) ? 'red' : 'green';
 	e.style.color = 'white';
 	e.style.fontWeight = 'bold';
+}
+function vcoloronoff(e)
+{
+	if (e.value == 'on') {
+		e.style.background = 'orange';
+		e.style.color = 'white';
+		e.style.fontWeight = 'bold';
+	} else {
+		e.style.background = 'silver';
+		e.style.color = 'initial';
+		e.style.fontWeight = 'initial';
+	}
 }
 function vcolorskip(e)
 {
@@ -251,6 +270,11 @@ $(document).ready(function(){ MQTTconnect(); $('#manage').trigger('change'); });
 	Alarms<br />
 	<div id='alarms'>
 	</div>
+	<p id='alarms_sleeptimer'>
+		<button value='off' id='alarms_sleeptimer_state' onclick='toggleonoff(this)' onchange='vcoloronoff(this)'>Sleep timer</button>
+		for
+		<input type='text' id='alarms_sleeptimer_statetimeoff' class='alrmedit' size='4' onchange='publish(this)' />
+	</p>
 	<hr />
     </div>
   </body>

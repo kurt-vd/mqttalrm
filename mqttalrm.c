@@ -455,7 +455,6 @@ int main(int argc, char *argv[])
 {
 	int opt, ret, waittime;
 	char *str, *endp;
-	const char *cstr;
 	char mqtt_name[32];
 	int logmask = LOG_UPTO(LOG_NOTICE);
 
@@ -538,10 +537,9 @@ int main(int argc, char *argv[])
 		/* re-assign the default */
 		alrm_root_topics = (char *[]){ "alarms", NULL, };
 	} else for (; optind < argc; ++optind) {
-		cstr = csprintf("%s/+/+", argv[optind]);
-		ret = mosquitto_subscribe(mosq, NULL, cstr, mqtt_qos);
+		ret = mosquitto_subscribe(mosq, NULL, argv[optind], mqtt_qos);
 		if (ret)
-			mylog(LOG_ERR, "mosquitto_subscribe %s: %s", cstr, mosquitto_strerror(ret));
+			mylog(LOG_ERR, "mosquitto_subscribe %s: %s", argv[optind], mosquitto_strerror(ret));
 	}
 
 	while (1) {

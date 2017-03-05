@@ -499,11 +499,9 @@ int main(int argc, char *argv[])
 		}
 		break;
 
-	case '?':
-		fputs(help_msg, stderr);
-		exit(0);
 	default:
 		fprintf(stderr, "unknown option '%c'", opt);
+	case '?':
 		fputs(help_msg, stderr);
 		exit(1);
 		break;

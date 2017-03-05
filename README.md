@@ -12,7 +12,7 @@ for the alarms.
 
 Run these commands (or start with your init system).
 
-	$ mqttalrm -v &
+	$ mqttalrm -v 'alarms/+/+' &
 	$ mqttoff -v -r off -s timeoff alarms/+/state alarms/+/statetimeoff &
 
 ## MQTT topic layout

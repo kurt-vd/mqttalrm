@@ -43,7 +43,7 @@ static const char help_msg[] =
 	" -s, --snooze=TIME	Specify snooze time (default 9m)\n"
 	"\n"
 	"Paramteres\n"
-	" PATTERN	A pattern to subscribe for\n"
+	" PATTERN	A pattern to subscribe for (default alarms/+/+)\n"
 	;
 
 #ifdef _GNU_SOURCE

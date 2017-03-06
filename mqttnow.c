@@ -11,6 +11,7 @@
 
 #include <unistd.h>
 #include <getopt.h>
+#include <locale.h>
 #include <syslog.h>
 #include <mosquitto.h>
 
@@ -227,6 +228,7 @@ int main(int argc, char *argv[])
 	char mqtt_name[32];
 	int logmask = LOG_UPTO(LOG_NOTICE);
 
+	setlocale(LC_ALL, "");
 	/* argument parsing */
 	while ((opt = getopt_long(argc, argv, optstring, long_opts, NULL)) >= 0)
 	switch (opt) {

@@ -114,16 +114,14 @@ function onMessageArrived(message)
 		console.log("new alarm '" + name + "'");
 		$('#alarms').append(
 			"<p id='"+name+"'>"+
-			"<button value='' id='alarms_"+name+"_enable' onclick='toggle(this)' onchange='vcolor(this)'>"+name+"</button>"+
+			"<button value='' id='alarms_"+name+"_state' onclick='snooze(this)' onchange='vcolorstate(this)'>"+name+"</button>"+
 			"&nbsp;<input type='text' id='alarms_"+name+"_alarm' class='alrmedit' size='5' onchange='publish(this)' />"+
 			"&nbsp;<input type='text' id='alarms_"+name+"_repeat' class='alrmedit' size='7' onchange='publish(this)' />"+
 			"&nbsp;for&nbsp;<input type='text' id='alarms_"+name+"_statetimeoff' class='alrmedit' size='4' onchange='publish(this)' />"+
 			"&nbsp;<button value='' id='alarms_"+name+"_skip' onclick='toggle(this)' onchange='vcolorskip(this)'>skip</button>"+
+			"&nbsp;<button value='' id='alarms_"+name+"_enable' class='alrmedit' onclick='toggle(this)' onchange='vcolorenabled(this)'>armed</button>"+
 			"&nbsp;<button value='alarms_"+name+"_alarm' class='alrmaddremove' onclick='deletealrm(this)'>del</button>"+
-			"&nbsp;<button value='' id='alarms_"+name+"_state' onclick='snooze(this)' onchange='snoozestate(this)'>...</button>"+
 			"</p>");
-		btnstate = '#alarms_'+name+'_state';
-		$(btnstate).hide();
 		$('#manage').trigger('change');
 	} else if (topic.match(/^alarms\/.*\/alarm$/) && !payload.length && $(id).length) {
 		/* time to delete */
@@ -139,13 +137,6 @@ function onMessageArrived(message)
 	}
 	changingtopic = '';
 };
-
-function raiseevent(e)
-{
-	topic = e.getAttribute('id').replace(/_/g,'/');
-	mqtt.send(topic, ''+e.value, 1, false);
-	//console.log(topic + " > '" + e.value + "'");
-}
 
 function publish(e)
 {
@@ -170,16 +161,10 @@ function toggleonoff(e)
 	//console.log(topic + " > '" + e.value + "'");
 	mqtt.send(topic, ''+ e.value, 1, true);
 }
-function vcolor(e)
+function vcolorenabled(e)
 {
-	e.style.background = (e.value == 0) ? 'red' : 'green';
-	e.style.color = 'white';
-	e.style.fontWeight = 'bold';
-}
-function vcoloronoff(e)
-{
-	if (e.value == 'on') {
-		e.style.background = 'orange';
+	if (e.value == 0) {
+		e.style.background = 'red';
 		e.style.color = 'white';
 		e.style.fontWeight = 'bold';
 	} else {
@@ -210,21 +195,27 @@ function snooze(e)
 	else if (e.value == 'on')
 		/* dismiss */
 		mqtt.send(topic, 'snoozed', 1, true);
+	else if (e.value == 'off')
+		/* raise */
+		mqtt.send(topic, 'on', 1, true);
 }
 
-function snoozestate(e)
+function vcolorstate(e)
 {
-	if (e.value == 'off')
-		/* hide */
-		e.style.display = 'none';
-	else
-		/* show */
-		e.style.display = '';
-	e.innerHTML = e.value;
-	if (e.value == 'on')
-		e.style.background = 'orange';
-	else if (e.value == 'snoozed')
+	//e.innerHTML = e.value;
+	if (e.value == 'on') {
+		e.style.background = 'green';
+		e.style.color = 'white';
+		e.style.fontWeight = 'bold';
+	} else if (e.value == 'snoozed') {
 		e.style.background = 'yellow';
+		e.style.color = 'black';
+		e.style.fontWeight = 'bold';
+	} else if (e.value == 'off') {
+		e.style.background = 'silver';
+		e.style.color = 'initial';
+		e.style.fontWeight = 'initial';
+	}
 }
 
 function deletealrm(e)
@@ -273,7 +264,7 @@ $(document).ready(function(){ MQTTconnect(); $('#manage').trigger('change'); });
 	<div id='alarms'>
 	</div>
 	<p id='alarms_sleeptimer'>
-		<button value='off' id='alarms_sleeptimer_state' onclick='toggleonoff(this)' onchange='vcoloronoff(this)'>Sleep timer</button>
+		<button value='off' id='alarms_sleeptimer_state' onclick='toggleonoff(this)' onchange='vcolorstate(this)'>Sleep timer</button>
 		for
 		<input type='text' id='alarms_sleeptimer_statetimeoff' class='alrmedit' size='4' onchange='publish(this)' />
 	</p>

@@ -365,14 +365,14 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 		return;
 	if (!it) {
 		/* global controls */
-		if (!strcmp(tok, "dismiss")) {
+		if (!strcmp(tok, "/dismiss")) {
 			pub_alarms_hold(1);
 			for (it = items; it; it = it->next) {
 				if (it->state != ALRM_OFF)
 					dismiss_alrm(it);
 			}
 			pub_alarms_hold(0);
-		} else if (!strcmp(tok, "snooze")) {
+		} else if (!strcmp(tok, "/snooze")) {
 			pub_alarms_hold(1);
 			for (it = items; it; it = it->next) {
 				if (it->state != ALRM_OFF)
@@ -380,6 +380,7 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 			}
 			pub_alarms_hold(0);
 		}
+		return;
 	}
 	if (!strcmp(tok, "/alarm")) {
 		if (!msg->payloadlen) {

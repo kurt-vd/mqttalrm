@@ -88,6 +88,23 @@ struct item {
 
 struct item *items;
 
+/* signalling */
+static void onsigterm(int signr)
+{
+	sigterm = 1;
+}
+
+/* count pending state */
+static int nvalid(void)
+{
+	struct item *it;
+	int ret = 0;
+
+	for (it = items; it; it = it->next)
+		ret += it->lastvalue ? 1 : 0;
+	return ret;
+}
+
 /* MQTT iface */
 static void my_mqtt_log(struct mosquitto *mosq, void *userdata, int level, const char *str)
 {
@@ -183,12 +200,27 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 			free(it->fmt);
 		it->fmt = strdup(msg->payload);
 		mylog(LOG_INFO, "mqttnow spec for %s: '%s'", it->topic, it->fmt);
+		return;
+	}
+	if (sigterm) {
+		/* during shutdown, register empty items */
+		it = get_item(msg->topic, 0);
+		if (!it)
+			return;
+		if (!it->lastvalue)
+			/* it has not been set yet, or has been cleared already */
+			/* don't track into eternity ! */
+			return;
+		if (!msg->payloadlen) {
+			free(it->lastvalue);
+			it->lastvalue = NULL;
+		}
 	}
 }
 
 static void my_exit(void)
 {
-	if (mosq)
+	if (!mosq)
 		mosquitto_disconnect(mosq);
 }
 
@@ -200,6 +232,9 @@ static void sendnow(void *dat)
 	time_t tnow;
 	struct tm tm;
 
+	if (sigterm)
+		/* stop sending */
+		return;
 	time(&tnow);
 	tm = *localtime(&tnow);
 
@@ -269,6 +304,8 @@ int main(int argc, char *argv[])
 	}
 
 	atexit(my_exit);
+	signal(SIGINT, onsigterm);
+	signal(SIGTERM, onsigterm);
 	openlog(NAME, LOG_PERROR, LOG_LOCAL2);
 	setlogmask(logmask);
 
@@ -299,6 +336,17 @@ int main(int argc, char *argv[])
 
 	sendnow(NULL);
 	while (1) {
+		if (sigterm && !nvalid())
+			break;
+		if (sigterm == 1) {
+			struct item *it;
+
+			/* mark as cleared */
+			sigterm = 2;
+			/* clear time indications */
+			for (it = items; it; it = it->next)
+				mosquitto_publish(mosq, NULL, it->topic, 0, NULL, mqtt_qos, 1);
+		}
 		libt_flush();
 		waittime = libt_get_waittime();
 		if (waittime > 1000)

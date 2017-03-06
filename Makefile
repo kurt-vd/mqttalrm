@@ -1,4 +1,4 @@
-PROGS	= mqttalrm mqttoff
+PROGS	= mqttalrm mqttoff mqttnow
 default	: $(PROGS)
 
 PREFIX	= /usr/local
@@ -18,6 +18,8 @@ CPPFLAGS += -DVERSION=\"$(VERSION)\"
 mqttalrm: lib/libt.o
 
 mqttoff: lib/libt.o
+
+mqttnow: lib/libt.o
 
 install: $(PROGS)
 	$(foreach PROG, $(PROGS), install -vp -m 0777 $(INSTOPTS) $(PROG) $(DESTDIR)$(PREFIX)/bin/$(PROG);)

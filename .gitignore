@@ -1,6 +1,7 @@
 # output
 /mqttalrm
 /mqttoff
+/mqttnow
 
 # temp
 *.o

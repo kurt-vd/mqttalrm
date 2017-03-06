@@ -14,6 +14,7 @@ Run these commands (or start with your init system).
 
 	$ mqttalrm -v 'alarms/+/+' &
 	$ mqttoff -v -r off -s timeoff alarms/+/state alarms/+/statetimeoff &
+	$ mqttnow -v -s /fmtnow &
 
 ## MQTT topic layout
 
@@ -23,6 +24,8 @@ Run these commands (or start with your init system).
 * alarms/NAME/skip	0 or 1, when 1, the alarm is skipped **once**
 * alarms/NAME/state	**off**, **snoozed** or **on**.
 * alarms/NAME/statetimeoff	ex **1h**. The alarms will turn off after 1h.
+* state/time		**dow, HH:MM:SS**, current system time
+* state/time/fmtnow	**%a, %H:%M:%S**, current system time strftime format
 
 # tools
 ## mqttalrm

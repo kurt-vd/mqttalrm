@@ -343,13 +343,15 @@ static void reschedule_alrm(struct item *it)
 		it->state = ALRM_OFF;
 		pub_alrm_state(it);
 	}
-	if (it->valid && it->enabled) {
+	if (!it->valid)
+		return;
+	else if (it->enabled) {
 		long delay;
 
 		delay = next_alarm(it);
 		libt_add_timeout(delay, on_alrm, it);
 		mylog(LOG_INFO, "scheduled '%s' in %lus", it->topic, delay);
-	} else
+	} else if (it->valid)
 		mylog(LOG_INFO, "disabled '%s'", it->topic);
 }
 

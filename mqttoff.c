@@ -75,7 +75,7 @@ static int mqtt_port = 1883;
 static const char *mqtt_suffix = "/timeoff";
 static const char *mqtt_write_suffix;
 static const char *mqtt_reset_value = "0";
-static int mqtt_suffixlen = 1;
+static int mqtt_suffixlen = 8;
 static int mqtt_keepalive = 10;
 static int mqtt_qos = 1;
 

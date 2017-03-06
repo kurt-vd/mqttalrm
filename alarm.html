@@ -10,7 +10,7 @@
 /* global variables */
 host = 'localhost' /*'::1'*/;
 port = 9001;
-topics = [ 'alarms/+/+' ]; // topics to subscribe to
+topics = [ 'alarms/+/+', 'state/time' ]; // topics to subscribe to
 useTLS = false;
 username = null;
 password = null;
@@ -103,7 +103,7 @@ function onMessageArrived(message)
 		return;
 	}
 	mainid = id.replace(/_[^_]*$/, '_state');
-	if (!$(mainid).length) {
+	if (!$(id).length && !$(mainid).length) {
 		changingtopic = topic;
 		/* add new object */
 		name = topic.replace(/^[^\/]*\//,'').replace(/\/.*$/,'');
@@ -259,6 +259,8 @@ $(document).ready(function(){ MQTTconnect(); $('#manage').trigger('change'); });
 	<div>
 		Status
 		<input type='button' value='MQTT' id='mqtt' />
+		&nbsp;
+		<input type='text' id='state_time' disabled='true' size='15' />
 		&nbsp;
 	<input id='manage' type='checkbox' onchange="
 		$('.alrmaddremove').toggle(this.checked);

@@ -326,6 +326,11 @@ static void on_alrm(void *dat)
 
 static void snooze_alrm(struct item *it)
 {
+	if (!it->valid) {
+		/* effectively dismiss the alarm */
+		reschedule_alrm(it);
+		return;
+	}
 	libt_add_timeout(snooze_time, on_alrm, it);
 	mylog(LOG_INFO, "snoozed %s for %us", it->topic, snooze_time);
 	if (it->state != ALRM_SNOOZED) {

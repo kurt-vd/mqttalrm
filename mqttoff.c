@@ -86,6 +86,7 @@ struct item {
 	struct item *next;
 
 	char *topic;
+	char *resettopic;
 	char *resetvalue;
 	double delay;
 	double ontime;
@@ -125,6 +126,8 @@ static struct item *get_item(const char *topic)
 	it = malloc(sizeof(*it));
 	memset(it, 0, sizeof(*it));
 	it->topic = strdup(topic);
+	if (mqtt_write_suffix)
+		asprintf(&it->resettopic, "%s%s", it->topic, mqtt_write_suffix);
 	it->resetvalue = strdup(mqtt_reset_value);
 
 	/* insert in linked list */
@@ -278,7 +281,7 @@ int main(int argc, char *argv[])
 		break;
 
 	default:
-		fprintf(stderr, "unknown option '%c'", opt);
+		fprintf(stderr, "unknown option '%c'\n", opt);
 	case '?':
 		fputs(help_msg, stderr);
 		exit(1);

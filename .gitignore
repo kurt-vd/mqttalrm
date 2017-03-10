@@ -2,6 +2,7 @@
 /mqttalrm
 /mqttoff
 /mqttnow
+/mqttimport
 
 # temp
 *.o

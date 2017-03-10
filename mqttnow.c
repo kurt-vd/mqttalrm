@@ -33,7 +33,7 @@
 
 /* program options */
 static const char help_msg[] =
-	NAME ": an MQTT timeout-turnoff daemon\n"
+	NAME ": an MQTT current-time publisher\n"
 	"usage:	" NAME " [OPTIONS ...] [PATTERN] ...\n"
 	"\n"
 	"Options\n"
@@ -94,17 +94,6 @@ static void onsigterm(int signr)
 	sigterm = 1;
 }
 
-/* count pending state */
-static int nvalid(void)
-{
-	struct item *it;
-	int ret = 0;
-
-	for (it = items; it; it = it->next)
-		ret += it->lastvalue ? 1 : 0;
-	return ret;
-}
-
 /* MQTT iface */
 static void my_mqtt_log(struct mosquitto *mosq, void *userdata, int level, const char *str)
 {
@@ -158,8 +147,6 @@ static void drop_item(struct item *it)
 		it->prev->next = it->next;
 	if (it->next)
 		it->next->prev = it->prev;
-	/* publish null value */
-	mosquitto_publish(mosq, NULL, it->topic, 0, NULL, mqtt_qos, 1);
 	/* free memory */
 	free(it->topic);
 	if (it->fmt)
@@ -203,18 +190,10 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 		return;
 	}
 	if (sigterm) {
-		/* during shutdown, register empty items */
+		/* during shutdown, remove empty items */
 		it = get_item(msg->topic, 0);
-		if (!it)
-			return;
-		if (!it->lastvalue)
-			/* it has not been set yet, or has been cleared already */
-			/* don't track into eternity ! */
-			return;
-		if (!msg->payloadlen) {
-			free(it->lastvalue);
-			it->lastvalue = NULL;
-		}
+		if (it && !msg->payloadlen)
+			drop_item(it);
 	}
 }
 
@@ -335,9 +314,7 @@ int main(int argc, char *argv[])
 	}
 
 	sendnow(NULL);
-	while (1) {
-		if (sigterm && !nvalid())
-			break;
+	while (!sigterm || items) {
 		if (sigterm == 1) {
 			struct item *it;
 

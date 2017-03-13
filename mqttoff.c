@@ -42,7 +42,6 @@ static const char help_msg[] =
 	" -r, --reset=STR	The global 'default' reset value (default '0')\n"
 	" -s, --suffix=STR	Give MQTT topic suffix for timeouts (default '/timeoff')\n"
 	" -w, --write=STR	Give MQTT topic suffix for writing the topic (default empty)\n"
-	" -c, --countdown=STR	Give MQTT topic suffix for publishing a countdown timer\n"
 	"\n"
 	"Paramteres\n"
 	" PATTERN	A pattern to subscribe for\n"
@@ -58,7 +57,6 @@ static struct option long_opts[] = {
 	{ "reset", required_argument, NULL, 'r', },
 	{ "suffix", required_argument, NULL, 's', },
 	{ "write", required_argument, NULL, 'w', },
-	{ "countdown", required_argument, NULL, 'c', },
 
 	{ },
 };
@@ -66,7 +64,7 @@ static struct option long_opts[] = {
 #define getopt_long(argc, argv, optstring, longopts, longindex) \
 	getopt((argc), (argv), (optstring))
 #endif
-static const char optstring[] = "Vv?m:r:s:w:c:";
+static const char optstring[] = "Vv?m:r:s:w:";
 
 /* signal handler */
 static volatile int sigterm;
@@ -77,7 +75,6 @@ static int mqtt_port = 1883;
 static const char *mqtt_suffix = "/timeoff";
 static const char *mqtt_write_suffix;
 static const char *mqtt_reset_value = "0";
-static const char *mqtt_cntdwn;
 static int mqtt_suffixlen = 8;
 static int mqtt_keepalive = 10;
 static int mqtt_qos = 1;
@@ -90,7 +87,6 @@ struct item {
 
 	char *topic;
 	char *resettopic;
-	char *cntdwntopic;
 	char *resetvalue;
 	double delay;
 	double ontime;
@@ -132,8 +128,6 @@ static struct item *get_item(const char *topic)
 	it->topic = strdup(topic);
 	if (mqtt_write_suffix)
 		asprintf(&it->resettopic, "%s%s", it->topic, mqtt_write_suffix);
-	if (mqtt_cntdwn)
-		asprintf(&it->cntdwntopic, "%s%s", it->topic, mqtt_cntdwn);
 	it->resetvalue = strdup(mqtt_reset_value);
 
 	/* insert in linked list */
@@ -162,24 +156,6 @@ static void reset_item(void *dat)
 	mylog(LOG_INFO, "%s = %s", settopic, it->resetvalue);
 	if (settopic != it->topic)
 		free(settopic);
-}
-
-static void pub_countdown(void *dat)
-{
-	struct item *it;
-	int ret;
-	double now = libt_now();
-	char sbuf[128];
-
-	for (it = items; it; it = it->next) {
-		if (isnan(it->ontime) || isnan(it->delay))
-			continue;
-		sprintf(sbuf, "%.0lf", it->ontime + it->delay - now);;
-		ret = mosquitto_publish(mosq, NULL, it->cntdwntopic, strlen(sbuf), sbuf, mqtt_qos, 0);
-		if (ret < 0)
-			mylog(LOG_ERR, "mosquitto_publish %s: %s", it->cntdwntopic, mosquitto_strerror(ret));
-	}
-	libt_add_timeout(10, pub_countdown, dat);
 }
 
 static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitto_message *msg)
@@ -242,8 +218,6 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 	if (!strcmp(it->resetvalue, (char *)msg->payload)) {
 		/* value was reset */
 		libt_remove_timeout(reset_item, it);
-		if (isnan(it->ontime) && it->cntdwntopic)
-			mosquitto_publish(mosq, NULL, it->cntdwntopic, 0, NULL, mqtt_qos, 0);
 		it->ontime = NAN;
 		if (!isnan(it->delay))
 			mylog(LOG_INFO, "%s: reverted, no action required", it->topic);
@@ -305,9 +279,6 @@ int main(int argc, char *argv[])
 	case 'w':
 		mqtt_write_suffix = optarg;
 		break;
-	case 'c':
-		mqtt_cntdwn = optarg;
-		break;
 
 	default:
 		fprintf(stderr, "unknown option '%c'\n", opt);
@@ -346,8 +317,6 @@ int main(int argc, char *argv[])
 			mylog(LOG_ERR, "mosquitto_subscribe %s: %s", argv[optind], mosquitto_strerror(ret));
 	}
 
-	if (mqtt_cntdwn)
-		libt_add_timeout(1, pub_countdown, NULL);
 	while (1) {
 		libt_flush();
 		waittime = libt_get_waittime();

@@ -119,7 +119,7 @@ function onMessageArrived(message)
 			"&nbsp;<input type='text' id='alarms_"+name+"_repeat' class='alrmedit' size='7' onchange='publish(this)' />"+
 			"&nbsp;for&nbsp;<input type='text' id='alarms_"+name+"_statetimeoff' class='alrmedit' size='4' onchange='publish(this)' />"+
 			"&nbsp;<button value='' id='alarms_"+name+"_skip' onclick='toggle(this)' onchange='vcolorskip(this)'>skip</button>"+
-			"&nbsp;<button value='' id='alarms_"+name+"_enable' class='alrmedit' onclick='toggle(this)' onchange='vcolorenabled(this)'>armed</button>"+
+			"&nbsp;<button value='' id='alarms_"+name+"_enable' class='alrmedit' onclick='toggle(this)' onchange='vcolorenabled(this)'>on</button>"+
 			"&nbsp;<button value='alarms_"+name+"_alarm' class='alrmaddremove' onclick='deletealrm(this)'>del</button>"+
 			"</p>");
 		$('#manage').trigger('change');
@@ -164,10 +164,12 @@ function toggleonoff(e)
 function vcolorenabled(e)
 {
 	if (e.value == 0) {
+		e.innerHTML = 'off';
 		e.style.background = 'red';
 		e.style.color = 'white';
 		e.style.fontWeight = 'bold';
 	} else {
+		e.innerHTML = 'on';
 		e.style.background = 'silver';
 		e.style.color = 'initial';
 		e.style.fontWeight = 'initial';
@@ -264,7 +266,7 @@ $(document).ready(function(){ MQTTconnect(); $('#manage').trigger('change'); });
 	<div id='alarms'>
 	</div>
 	<p id='alarms_sleeptimer'>
-		<button value='off' id='alarms_sleeptimer_state' onclick='toggleonoff(this)' onchange='vcolorstate(this)'>Sleep timer</button>
+		<button value='off' id='alarms_sleeptimer_state' onclick='toggleonoff(this)' onchange='vcolorstate(this)'>sleeptimer</button>
 		for
 		<input type='text' id='alarms_sleeptimer_statetimeoff' class='alrmedit' size='4' onchange='publish(this)' />
 	</p>

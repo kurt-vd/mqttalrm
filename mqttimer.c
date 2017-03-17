@@ -16,7 +16,7 @@
 
 #include "lib/libt.h"
 
-#define NAME "mqttoff"
+#define NAME "mqttimer"
 #ifndef VERSION
 #define VERSION "<undefined version>"
 #endif
@@ -40,7 +40,7 @@ static const char help_msg[] =
 	" -v, --verbose		Be more verbose\n"
 	" -m, --mqtt=HOST[:PORT]Specify alternate MQTT host+port\n"
 	" -r, --reset=STR	The global 'default' reset value (default '0')\n"
-	" -s, --suffix=STR	Give MQTT topic suffix for timeouts (default '/timeoff')\n"
+	" -s, --suffix=STR	Give MQTT topic suffix for timeouts (default '/timer')\n"
 	" -w, --write=STR	Give MQTT topic suffix for writing the topic (default empty)\n"
 	"\n"
 	"Paramteres\n"
@@ -72,10 +72,10 @@ static volatile int sigterm;
 /* MQTT parameters */
 static const char *mqtt_host = "localhost";
 static int mqtt_port = 1883;
-static const char *mqtt_suffix = "/timeoff";
+static const char *mqtt_suffix = "/timer";
 static const char *mqtt_write_suffix;
 static const char *mqtt_reset_value = "0";
-static int mqtt_suffixlen = 8;
+static int mqtt_suffixlen = 6;
 static int mqtt_keepalive = 10;
 static int mqtt_qos = 1;
 
@@ -201,7 +201,7 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 				it->resetvalue = strdup(mqtt_reset_value);
 			}
 		}
-		mylog(LOG_INFO, "timeoff spec for %s: %.2lfs '%s'", it->topic, it->delay, it->resetvalue ?: "");
+		mylog(LOG_INFO, "timer spec for %s: %.2lfs '%s'", it->topic, it->delay, it->resetvalue ?: "");
 
 		libt_remove_timeout(reset_item, it);
 		if (!isnan(it->delay) && !isnan(it->ontime)) {

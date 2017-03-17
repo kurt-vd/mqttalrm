@@ -117,7 +117,7 @@ function onMessageArrived(message)
 			"<button value='' id='alarms_"+name+"_state' onclick='snooze(this)' onchange='vcolorstate(this)'>"+name+"</button>"+
 			"&nbsp;<input type='text' id='alarms_"+name+"_alarm' class='alrmedit' size='5' onchange='publish(this)' />"+
 			"&nbsp;<input type='text' id='alarms_"+name+"_repeat' class='alrmedit' size='7' onchange='publish(this)' />"+
-			"&nbsp;for&nbsp;<input type='text' id='alarms_"+name+"_statetimeoff' class='alrmedit' size='4' onchange='publish(this)' />"+
+			"&nbsp;for&nbsp;<input type='text' id='alarms_"+name+"_statetimer' class='alrmedit' size='4' onchange='publish(this)' />"+
 			"&nbsp;<button value='' id='alarms_"+name+"_skip' onclick='toggle(this)' onchange='vcolorskip(this)'>skip</button>"+
 			"&nbsp;<button value='' id='alarms_"+name+"_enable' class='alrmedit' onclick='toggle(this)' onchange='vcolorenabled(this)'>on</button>"+
 			"&nbsp;<button value='alarms_"+name+"_alarm' class='alrmaddremove' onclick='deletealrm(this)'>del</button>"+
@@ -268,7 +268,7 @@ $(document).ready(function(){ MQTTconnect(); $('#manage').trigger('change'); });
 	<p id='alarms_sleeptimer'>
 		<button value='off' id='alarms_sleeptimer_state' onclick='toggleonoff(this)' onchange='vcolorstate(this)'>sleeptimer</button>
 		for
-		<input type='text' id='alarms_sleeptimer_statetimeoff' class='alrmedit' size='4' onchange='publish(this)' />
+		<input type='text' id='alarms_sleeptimer_statetimer' class='alrmedit' size='4' onchange='publish(this)' />
 	</p>
 	<hr />
     </div>

@@ -1,5 +1,7 @@
-PROGS	= mqttalrm mqttoff mqttnow
+PROGS	= mqttalrm
+PROGS	+= mqttimer
 PROGS	+= mqttimport
+PROGS	+= mqttnow
 default	: $(PROGS)
 
 PREFIX	= /usr/local
@@ -16,13 +18,13 @@ VERSION := $(shell git describe --tags --always)
 
 CPPFLAGS += -DVERSION=\"$(VERSION)\"
 
-mqttalrm: lib/libt.o
+mqttalrm: lib/libt.o common.o
 
-mqttoff: lib/libt.o
-
-mqttnow: lib/libt.o
+mqttimer: lib/libt.o
 
 mqttimport: lib/libt.o
+
+mqttnow: lib/libt.o
 
 install: $(PROGS)
 	$(foreach PROG, $(PROGS), install -vp -m 0777 $(INSTOPTS) $(PROG) $(DESTDIR)$(PREFIX)/bin/$(PROG);)

@@ -13,7 +13,7 @@ for the alarms.
 Run these commands (or start with your init system).
 
 	$ mqttalrm -v 'alarms/+/+' &
-	$ mqttoff -v -r off -s timeoff alarms/+/state alarms/+/statetimeoff &
+	$ mqttimer -v -r off -s timer alarms/+/state alarms/+/statetimer &
 	$ mqttnow -v -s /fmtnow &
 
 ## MQTT topic layout
@@ -23,7 +23,7 @@ Run these commands (or start with your init system).
 * alarms/NAME/enable	0 or 1
 * alarms/NAME/skip	0 or 1, when 1, the alarm is skipped **once**
 * alarms/NAME/state	**off**, **snoozed** or **on**.
-* alarms/NAME/statetimeoff	ex **1h**. The alarms will turn off after 1h.
+* alarms/NAME/statetimer ex **1h**. The alarms will turn off after 1h.
 * state/time		**dow, HH:MM:SS**, current system time
 * state/time/fmtnow	**%a, %H:%M:%S**, current system time strftime format
 
@@ -35,10 +35,10 @@ Run these commands (or start with your init system).
 * It will also reset **skip** when the alarm is actually skipped.
 * turns off state when the alarm is disabled or changed/rescheduled
 
-## mqttoff
+## mqttimer
 
-* listens to state & statetimeoff
-* turns off state after the time specified by statetimeoff
+* listens to state & statetimer
+* turns off state after the time specified by statetimer
 
 ## alarm.html
 

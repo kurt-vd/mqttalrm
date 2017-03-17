@@ -1,5 +1,6 @@
 PROGS	= mqttalrm
 PROGS	+= mqttimer
+PROGS	+= mqttimesw
 PROGS	+= mqttimport
 PROGS	+= mqttnow
 default	: $(PROGS)
@@ -21,6 +22,8 @@ CPPFLAGS += -DVERSION=\"$(VERSION)\"
 mqttalrm: lib/libt.o common.o
 
 mqttimer: lib/libt.o
+
+mqttimesw: lib/libt.o common.o
 
 mqttimport: lib/libt.o
 

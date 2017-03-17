@@ -12,8 +12,8 @@ for the alarms.
 
 Run these commands (or start with your init system).
 
-	$ mqttalrm -v 'alarms/+/+' &
-	$ mqttimer -v -r off -s timer alarms/+/state alarms/+/statetimer &
+	$ mqttalrm -v 'alarms/+' 'alarms/+/+' &
+	$ mqttimer -v alarms/+ alarms/+/timer &
 	$ mqttnow -v -s /fmtnow &
 
 ## MQTT topic layout
@@ -22,8 +22,10 @@ Run these commands (or start with your init system).
 * alarms/NAME/repeat	**mtwtfss** for active days, **-** when disabled
 * alarms/NAME/enable	0 or 1
 * alarms/NAME/skip	0 or 1, when 1, the alarm is skipped **once**
-* alarms/NAME/state	**off**, **snoozed** or **on**.
-* alarms/NAME/statetimer ex **1h**. The alarms will turn off after 1h.
+* alarms/NAME		**0**, **1** or **snoozed**
+* alarms/NAME/timer	ex **1h**. The alarms will turn off after 1h.
+* alarms/NAME2		**0** or **1**
+* alarms/NAME2/timer	*timer value*, NAME2 acts as a sleep timer
 * state/time		**dow, HH:MM:SS**, current system time
 * state/time/fmtnow	**%a, %H:%M:%S**, current system time strftime format
 

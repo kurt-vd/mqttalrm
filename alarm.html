@@ -2,7 +2,7 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
   <head>
-    <title>my home</title>
+    <title>Alarm page</title>
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<script src='https://code.jquery.com/jquery-1.12.4.js' type='text/javascript'></script>
 	<script src='https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.js' type='text/javascript'></script>
@@ -10,7 +10,7 @@
 /* global variables */
 host = 'localhost' /*'::1'*/;
 port = 9001;
-topics = [ 'alarms/+/+', 'state/time' ]; // topics to subscribe to
+topics = [ 'alarms/+', 'alarms/+/+', 'state/time' ]; // topics to subscribe to
 useTLS = false;
 username = null;
 password = null;
@@ -97,12 +97,11 @@ function onMessageArrived(message)
 	var payload = message.payloadString;
 	var id = '#'+topic.replace(/\//g,'_');
 
-	//console.log("" + topic + " = '" + payload + "'");
 	if (topic.match(/^alarms\/[^\/]+\/(dismiss|snooze)/)) {
-		console.log('ignored '+topic);
+		//console.log('ignored '+topic);
 		return;
 	}
-	mainid = id.replace(/_[^_]*$/, '_state');
+	mainid = id.replace(/^(#alarms_[^_]+)(|_[^_]*)$/, '$1');
 	if (!$(id).length && !$(mainid).length) {
 		changingtopic = topic;
 		/* add new object */
@@ -114,12 +113,12 @@ function onMessageArrived(message)
 		console.log("new alarm '" + name + "'");
 		$('#alarms').append(
 			"<p id='"+name+"'>"+
-			"<button value='' id='alarms_"+name+"_state' onclick='snooze(this)' onchange='vcolorstate(this)'>"+name+"</button>"+
+			"<button value='' id='alarms_"+name+"' onclick='snooze(this)' onchange='vcolorstate(this)'>"+name+"</button>"+
 			"&nbsp;<input type='text' id='alarms_"+name+"_alarm' class='alrmedit' size='5' onchange='publish(this)' />"+
 			"&nbsp;<input type='text' id='alarms_"+name+"_repeat' class='alrmedit' size='7' onchange='publish(this)' />"+
-			"&nbsp;for&nbsp;<input type='text' id='alarms_"+name+"_statetimer' class='alrmedit' size='4' onchange='publish(this)' />"+
-			"&nbsp;<button value='' id='alarms_"+name+"_skip' onclick='toggle(this)' onchange='vcolorskip(this)'>skip</button>"+
-			"&nbsp;<button value='' id='alarms_"+name+"_enable' class='alrmedit' onclick='toggle(this)' onchange='vcolorenabled(this)'>on</button>"+
+			"&nbsp;for&nbsp;<input type='text' id='alarms_"+name+"_timer' class='alrmedit' size='4' onchange='publish(this)' />"+
+			"&nbsp;<button value='0' id='alarms_"+name+"_skip' onclick='toggle(this)' onchange='vcolorskip(this)'>skip</button>"+
+			"&nbsp;<button value='1' id='alarms_"+name+"_enable' class='alrmedit' onclick='toggle(this)' onchange='vcolorenabled(this)'>on</button>"+
 			"&nbsp;<button value='alarms_"+name+"_alarm' class='alrmaddremove' onclick='deletealrm(this)'>del</button>"+
 			"</p>");
 		$('#manage').trigger('change');
@@ -133,7 +132,7 @@ function onMessageArrived(message)
 	if ($(id).length) {
 		changingtopic = topic;
 		$(id).val(payload);
-		$(id).trigger('change');
+		$(id).change();
 	}
 	changingtopic = '';
 };
@@ -143,23 +142,15 @@ function publish(e)
 	topic = e.getAttribute('id').replace(/_/g,'/');
 	if (topic == changingtopic)
 		return;
-	//console.log(topic + " > '" + e.value + "'");
 	mqtt.send(topic, ''+e.value, 1, !e.getAttribute('volatile')); 
 }
 
 function toggle(e)
 {
-	e.value = (e.value == 0) ? 1 : 0;
 	topic = e.getAttribute('id').replace(/_/g,'/');
-	//console.log(topic + " > '" + e.value + "'");
-	mqtt.send(topic, ''+ e.value, 1, true);
-}
-function toggleonoff(e)
-{
-	e.value = (e.value == 'off') ? 'on' : 'off';
-	topic = e.getAttribute('id').replace(/_/g,'/');
-	//console.log(topic + " > '" + e.value + "'");
-	mqtt.send(topic, ''+ e.value, 1, true);
+	newvalue = (e.value == '1') ? '0' : '1';
+	//console.log(topic + " > '" + newvalue + "'");
+	mqtt.send(topic, newvalue, 1, true);
 }
 function vcolorenabled(e)
 {
@@ -193,19 +184,20 @@ function snooze(e)
 	topic = e.getAttribute('id').replace(/_/g,'/');
 	if (e.value == 'snoozed')
 		/* dismiss */
-		mqtt.send(topic, 'off', 1, true);
-	else if (e.value == 'on')
+		newvalue = '0';
+	else if (e.value == '1')
 		/* dismiss */
-		mqtt.send(topic, 'snoozed', 1, true);
-	else if (e.value == 'off')
+		newvalue = 'snoozed';
+	else //if (e.value == '0')
 		/* raise */
-		mqtt.send(topic, 'on', 1, true);
+		newvalue = '1';
+	mqtt.send(topic, newvalue, 1, true);
 }
 
 function vcolorstate(e)
 {
 	//e.innerHTML = e.value;
-	if (e.value == 'on') {
+	if (e.value == '1') {
 		e.style.background = 'green';
 		e.style.color = 'white';
 		e.style.fontWeight = 'bold';
@@ -213,7 +205,7 @@ function vcolorstate(e)
 		e.style.background = 'yellow';
 		e.style.color = 'black';
 		e.style.fontWeight = 'bold';
-	} else if (e.value == 'off') {
+	} else { //if (e.value == '0') {
 		e.style.background = 'silver';
 		e.style.color = 'initial';
 		e.style.fontWeight = 'initial';
@@ -243,7 +235,7 @@ function newalarm(name)
 	}
 }
 
-$(document).ready(function(){ MQTTconnect(); $('#manage').trigger('change'); });
+$(document).ready(function(){ MQTTconnect(); $('#manage').change(); });
 
     </script>
   </head>
@@ -265,10 +257,10 @@ $(document).ready(function(){ MQTTconnect(); $('#manage').trigger('change'); });
 	Alarms<br />
 	<div id='alarms'>
 	</div>
-	<p id='alarms_sleeptimer'>
-		<button value='off' id='alarms_sleeptimer_state' onclick='toggleonoff(this)' onchange='vcolorstate(this)'>sleeptimer</button>
+	<p id='sleeptimer'>
+		<button value='0' id='alarms_sleeptimer' onclick='toggle(this)' onchange='vcolorstate(this)'>sleeptimer</button>
 		for
-		<input type='text' id='alarms_sleeptimer_statetimer' class='alrmedit' size='4' onchange='publish(this)' />
+		<input type='text' id='alarms_sleeptimer_timer' class='alrmedit' size='4' onchange='publish(this)' />
 	</p>
 	<hr />
     </div>

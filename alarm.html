@@ -77,7 +77,7 @@ function onConnect()
 	console.log('connected to ' + host + ':' + port + path);
 
 	for (var j in topics) {
-		mqtt.subscribe(topics[j], {qos: 0});
+		mqtt.subscribe(topics[j], {qos: 1});
 		console.log('subscribed to ' + topics[j]);
 	}
 }

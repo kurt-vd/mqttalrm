@@ -107,15 +107,15 @@ static void my_mqtt_log(struct mosquitto *mosq, void *userdata, int level, const
 	}
 }
 
-static struct item *get_item(const char *topic, int create)
+static struct item *get_item(const char *topic)
 {
 	struct item *it;
 
 	for (it = items; it; it = it->next)
-		if (!strcmp(it->topic, topic))
-			return it;
-	if (!create)
-		return NULL;
+		if (!strcmp(it->topic, topic)) {
+			mylog(LOG_ERR, "duplicate topic '%s' specified", topic);
+			return NULL;
+		}
 	/* not found, create one */
 	it = malloc(sizeof(*it));
 	memset(it, 0, sizeof(*it));
@@ -259,7 +259,9 @@ int main(int argc, char *argv[])
 		tok = strtok(line, " \t");
 		if (!tok || !strlen(tok))
 			continue;
-		it = get_item(tok, 1);
+		it = get_item(tok);
+		if (!it)
+			continue;
 		/* find remainder */
 		tok = strtok(NULL, "");
 		if (tok)

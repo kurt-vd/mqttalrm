@@ -10,7 +10,7 @@
 /* global variables */
 host = 'localhost' /*'::1'*/;
 port = 9001;
-topics = [ 'alarms/+', 'alarms/+/+', 'state/time' ]; // topics to subscribe to
+topics = [ 'alarms/+/+', 'alarms/+', 'state/time' ]; // topics to subscribe to
 useTLS = false;
 username = null;
 password = null;
@@ -110,6 +110,19 @@ function onMessageArrived(message)
 			console.log('ignored '+topic);
 			return;
 		}
+		if (id.match(/_(start|stop)$/)) {
+			console.log("new timesw '" + name + "'");
+			$('#alarms').append(
+			"<p id='"+name+"'>"+
+			"<button value='' id='alarms_"+name+"' onclick='toggle(this)' onchange='vcolorstate(this)'>"+name+"</button>"+
+			" from <input type='text' id='alarms_"+name+"_start' class='alrmedit' size='7' onchange='publish(this)' />"+
+			" to <input type='text' id='alarms_"+name+"_stop' class='alrmedit' size='7' onchange='publish(this)' />"+
+			" on <input type='text' id='alarms_"+name+"_repeat' class='alrmedit' size='7' onchange='publish(this)' />"+
+			"&nbsp;<button value='0' id='alarms_"+name+"_skip' onclick='toggle(this)' onchange='vcolorskip(this)'>skip</button>"+
+			"&nbsp;<button value='1' id='alarms_"+name+"_enable' class='alrmedit' onclick='toggle(this)' onchange='vcolorenabled(this)'>on</button>"+
+			"&nbsp;<button value='alarms_"+name+"' class='alrmaddremove' onclick='deletetimesw(this)'>del</button>"+
+			"</p>");
+		} else {
 		console.log("new alarm '" + name + "'");
 		$('#alarms').append(
 			"<p id='"+name+"'>"+
@@ -119,10 +132,11 @@ function onMessageArrived(message)
 			"&nbsp;for&nbsp;<input type='text' id='alarms_"+name+"_timer' class='alrmedit' size='4' onchange='publish(this)' />"+
 			"&nbsp;<button value='0' id='alarms_"+name+"_skip' onclick='toggle(this)' onchange='vcolorskip(this)'>skip</button>"+
 			"&nbsp;<button value='1' id='alarms_"+name+"_enable' class='alrmedit' onclick='toggle(this)' onchange='vcolorenabled(this)'>on</button>"+
-			"&nbsp;<button value='alarms_"+name+"_alarm' class='alrmaddremove' onclick='deletealrm(this)'>del</button>"+
+			"&nbsp;<button value='alarms_"+name+"' class='alrmaddremove' onclick='deletealrm(this)'>del</button>"+
 			"</p>");
+		}
 		$('#manage').trigger('change');
-	} else if (topic.match(/^alarms\/.*\/alarm$/) && !payload.length && $(id).length) {
+	} else if (topic.match(/^alarms\/.*\/(alarm|start)$/) && !payload.length && $(id).length) {
 		/* time to delete */
 		console.log("remove alarm '" + name + "'");
 		alarmid = '#'+name;
@@ -216,7 +230,13 @@ function deletealrm(e)
 {
 	topic = e.value.replace(/_/g,'/');
 	//console.log(topic + " > ''");
-	mqtt.send(topic, '', 1, true);
+	mqtt.send(topic+'/alarm', '', 1, true);
+}
+function deletetimesw(e)
+{
+	topic = e.value.replace(/_/g,'/');
+	//console.log(topic + " > ''");
+	mqtt.send(topic+'/start', '', 1, true);
 }
 
 /* new alarm functions */
@@ -231,6 +251,14 @@ function newalarm(name)
 	if (name.length) {
 		//console.log('create new alarm '+name);
 		mqtt.send('alarms/'+name+'/alarm', '12h00', 1, true);
+		$('#newalarm').val('');
+	}
+}
+function newtimesw(name)
+{
+	if (name.length) {
+		//console.log('create new alarm '+name);
+		mqtt.send('alarms/'+name+'/start', '12h00', 1, true);
 		$('#newalarm').val('');
 	}
 }
@@ -250,8 +278,9 @@ $(document).ready(function(){ MQTTconnect(); $('#manage').change(); });
 	<input id='manage' type='checkbox' onchange="
 		$('.alrmaddremove').toggle(this.checked);
 		$('.alrmedit').prop('disabled', !this.checked)" />manage<br />
-	<input class='alrmaddremove' type='text' id='newalarm' size=40 onkeyup='testfornew(this)'/>
-	<button class='alrmaddremove' id='newbttn' onclick="newalarm($('#newalarm').val())">add new</button>
+	<input class='alrmaddremove' type='text' id='newalarm' size=40 onkeyup='testfornew(this)'/><br />
+	<button class='alrmaddremove' id='newbttn' onclick="newalarm($('#newalarm').val())">add new alarm</button>
+	<button class='alrmaddremove' id='newbttn' onclick="newtimesw($('#newalarm').val())">add new time switch</button>
 	</div>
 	<hr />
 	Alarms<br />

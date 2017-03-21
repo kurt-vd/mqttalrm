@@ -146,6 +146,7 @@ static void drop_item(struct item *it)
 	free(it);
 }
 
+static void ontimeout(void *dat);
 static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitto_message *msg)
 {
 	struct item *it;
@@ -153,6 +154,7 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 	for (it = items; it; it = it->next) {
 		if (!strcmp(msg->topic, it->topic)) {
 			mylog(LOG_INFO, "leave %s", it->topic);
+			libt_remove_timeout(ontimeout, it);
 			drop_item(it);
 			return;
 		}

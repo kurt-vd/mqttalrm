@@ -70,14 +70,6 @@ static int mqtt_port = 1883;
 static int mqtt_keepalive = 10;
 static int mqtt_qos = 1;
 
-/* alarm states */
-static const char *const alrm_states[] = {
-#define ALRM_OFF	0
-	[0] = "off",
-#define ALRM_ON		1
-	[1] = "on",
-};
-
 /* state */
 static struct mosquitto *mosq;
 
@@ -258,9 +250,8 @@ static void reschedule_item(struct item *it)
 	}
 	long delay = tnext - tnow;
 	libt_add_timeout(delay, (hhmm == it->hhmm) ? tmsw_start : tmsw_stop, it);
-	mylog(LOG_INFO, "scheduled '%s' %s in %lus", it->topic,
-			(hhmm == it->hhmm) ? alrm_states[ALRM_ON] : alrm_states[ALRM_OFF],
-			delay);
+	mylog(LOG_INFO, "scheduled %s %i in %lus", it->topic,
+			(hhmm == it->hhmm) ? 1 : 0, delay);
 }
 
 static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitto_message *msg)

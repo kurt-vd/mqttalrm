@@ -99,6 +99,7 @@ struct item {
 	int skip;
 
 	int state;
+	int snooze_time;
 };
 
 struct item *items;
@@ -176,6 +177,7 @@ static struct item *get_item(const char *topic, const char *suffix, int create)
 
 	it->enabled = 1;
 	it->wdays = 0x7f; /* all days */
+	it->snooze_time = snooze_time;
 	/* insert in linked list */
 	it->next = items;
 	if (it->next) {
@@ -228,7 +230,7 @@ static void snooze_alrm(struct item *it)
 		reschedule_alrm(it);
 		return;
 	}
-	libt_add_timeout(snooze_time, on_alrm, it);
+	libt_add_timeout(it->snooze_time, on_alrm, it);
 	mylog(LOG_INFO, "snoozed %s for %us", it->topic, snooze_time);
 	if (it->state != ALRM_SNOOZED) {
 		it->state = ALRM_SNOOZED;
@@ -263,7 +265,7 @@ static void reschedule_alrm(struct item *it)
 static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitto_message *msg)
 {
 	int ret, val;
-	char *tok;
+	char *tok, *endp;
 	struct item *it;
 
 	tok = strrchr(msg->topic ?: "", '/') ?: "";
@@ -306,6 +308,8 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 					0, NULL, mqtt_qos, 1);
 			mosquitto_publish(mosq, NULL, csprintf("%s/enable", it->topic),
 					0, NULL, mqtt_qos, 1);
+			mosquitto_publish(mosq, NULL, csprintf("%s/snoozetime", it->topic),
+					0, NULL, mqtt_qos, 1);
 			mosquitto_publish(mosq, NULL, it->topic, 0, NULL, mqtt_qos, 1);
 			drop_item(it);
 			return;
@@ -332,6 +336,21 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 			it->enabled = val;
 			reschedule_alrm(it);
 		}
+	} else if (!strcmp(tok, "/snoozetime")) {
+		it = get_item(msg->topic, tok, 1);
+		val = strtoul(msg->payload ?: "0", &endp, 0);
+		switch (*endp) {
+		case 'w':
+			val *= 7;
+		case 'd':
+			val *= 24;
+		case 'h':
+			val *= 60;
+		case 'm':
+			val *= 60;
+			break;
+		}
+		it->snooze_time = val;
 	} else { // if (!strcmp(tok, "/state")) {
 		it = get_item(msg->topic, "", 0);
 		if (!it)
@@ -357,7 +376,12 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 			libt_remove_timeout(on_alrm, it);
 			break;
 		case ALRM_SNOOZED:
-			libt_add_timeout(snooze_time, on_alrm, it);
+			if (!it->snooze_time) {
+				mylog(LOG_INFO, "%s snoozed, with snooze-time 0!", msg->topic);
+				dismiss_alrm(it);
+				break;
+			}
+			libt_add_timeout(it->snooze_time, on_alrm, it);
 			break;
 		}
 	}

@@ -27,6 +27,7 @@ Run these commands (or start with your init system).
 * alarms/NAME/repeat	**mtwtfss** for active days, **-** when disabled
 * alarms/NAME/enable	0 or 1
 * alarms/NAME/skip	0 or 1, when 1, the alarm is skipped **once**
+* alarms/NAME/snoozetime ex **9m**, enable snoozing, and use this delay.
 * alarms/NAME		**0**, **1** or **snoozed**
 * alarms/NAME/timer	ex **1h**. The alarms will turn off after 1h.
 * alarms/NAME2		**0** or **1**

@@ -217,12 +217,16 @@ static void pushitem(void *dat)
 			sprintf(strazm, "%.3lf", azm);
 		}
 	}
-	ret = mosquitto_publish(mosq, NULL, it->topics[TOPIC_ELV], strlen(strsun), strsun, mqtt_qos, 1);
-	if (ret < 0)
-		mylog(LOG_ERR, "mosquitto_publish %s: %s", it->topics[TOPIC_ELV], mosquitto_strerror(ret));
-	ret = mosquitto_publish(mosq, NULL, it->topics[TOPIC_AZM], strlen(strazm), strazm, mqtt_qos, 1);
-	if (ret < 0)
-		mylog(LOG_ERR, "mosquitto_publish %s: %s", it->topics[TOPIC_AZM], mosquitto_strerror(ret));
+	if (it->topics[TOPIC_ELV]) {
+		ret = mosquitto_publish(mosq, NULL, it->topics[TOPIC_ELV], strlen(strsun), strsun, mqtt_qos, 1);
+		if (ret < 0)
+			mylog(LOG_ERR, "mosquitto_publish %s: %s", it->topics[TOPIC_ELV], mosquitto_strerror(ret));
+	}
+	if (it->topics[TOPIC_AZM]) {
+		ret = mosquitto_publish(mosq, NULL, it->topics[TOPIC_AZM], strlen(strazm), strazm, mqtt_qos, 1);
+		if (ret < 0)
+			mylog(LOG_ERR, "mosquitto_publish %s: %s", it->topics[TOPIC_AZM], mosquitto_strerror(ret));
+	}
 	libt_add_timeout(60, pushitem, it);
 }
 
@@ -258,7 +262,7 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 				 * in the MQTT cache
 				 */
 				free(it->topics[j]);
-				it->topics[j] = 0;
+				it->topics[j] = NULL;
 				/* drop item when all our topics have been cleared */
 				if (!it->topics[TOPIC_ELV] && !it->topics[TOPIC_AZM])
 					drop_item(it);

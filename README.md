@@ -7,6 +7,9 @@ via MQTT.
 Via retained messages, the MQTT broker provides the storage
 for the alarms.
 
+Since more & more tools were added, this project can be used
+in several other projects. I use it also for my home automation...
+
 # example use
 ## binaries
 
@@ -16,6 +19,7 @@ Run these commands (or start with your init system).
 	$ mqttimer -v alarms/+ alarms/+/timer &
 	$ mqttimesw -v alarms/+ alarms/+/+ &
 	$ mqttnow -v -s /fmtnow &
+	$ mqttsun -v 'state/+' &
 
 ## MQTT topic layout
 
@@ -34,6 +38,10 @@ Run these commands (or start with your init system).
 * alarms/NAME3/skip	see above
 * state/time		**dow, HH:MM:SS**, current system time
 * state/time/fmtnow	**%a, %H:%M:%S**, current system time strftime format
+* state/lat		Geo position's lattitude
+* state/lon		Geo position's longitude
+* state/sun/elv		Current's sun elevation
+* state/sun/azm		Sun's azimuth
 
 # tools
 ## mqttalrm
@@ -52,6 +60,15 @@ Run these commands (or start with your init system).
 
 * listens to state & statetimer
 * turns off state after the time specified by statetimer
+
+## mqttnow
+
+* publishes/updates the current system time
+
+## mqttsun
+
+* publishes the sun's position, based on lattitude+longitude.
+* Multiple geo locations are supported.
 
 ## alarm.html
 

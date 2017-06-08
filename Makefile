@@ -3,6 +3,7 @@ PROGS	+= mqttimer
 PROGS	+= mqttimesw
 PROGS	+= mqttimport
 PROGS	+= mqttnow
+PROGS	+= mqttsun
 default	: $(PROGS)
 
 PREFIX	= /usr/local
@@ -28,6 +29,9 @@ mqttimesw: lib/libt.o common.o
 mqttimport: lib/libt.o
 
 mqttnow: lib/libt.o
+
+mqttsun: LDLIBS+=-lm
+mqttsun: lib/libt.o sunposition.o
 
 install: $(PROGS)
 	$(foreach PROG, $(PROGS), install -vp -m 0777 $(INSTOPTS) $(PROG) $(DESTDIR)$(PREFIX)/bin/$(PROG);)

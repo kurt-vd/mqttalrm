@@ -4,6 +4,7 @@
 /mqttimesw
 /mqttimport
 /mqttnow
+/mqttsun
 
 # temp
 *.o

@@ -3,8 +3,10 @@
 /mqttimer
 /mqttimesw
 /mqttimport
+/mqttlogic
 /mqttnow
 /mqttsun
+/rpntest
 
 # temp
 *.o

@@ -257,7 +257,7 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 		case TOPIC_ELV:
 		case TOPIC_AZM:
 			/* output */
-			if (sigterm && msg->retain && !msg->payloadlen && it->topics[j]) {
+			if (sigterm && !msg->payloadlen && it->topics[j]) {
 				/* free this topic name, indicate it has been cleard
 				 * in the MQTT cache
 				 */

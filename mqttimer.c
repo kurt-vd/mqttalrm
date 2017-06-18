@@ -86,7 +86,7 @@ struct item {
 	struct item *next;
 
 	char *topic;
-	char *resettopic;
+	char *writetopic;
 	char *resetvalue;
 	double delay;
 	double ontime;
@@ -127,12 +127,12 @@ static struct item *get_item(const char *topic)
 	memset(it, 0, sizeof(*it));
 	it->topic = strdup(topic);
 	if (mqtt_write_suffix)
-		asprintf(&it->resettopic, "%s%s", it->topic, mqtt_write_suffix);
+		asprintf(&it->writetopic, "%s%s", it->topic, mqtt_write_suffix);
 	it->resetvalue = strdup(mqtt_reset_value);
+	it->ontime = it->delay = NAN;
 
 	/* insert in linked list */
 	it->next = items;
-	it->ontime = it->delay = NAN;
 	items = it;
 	return it;
 }
@@ -141,21 +141,14 @@ static void reset_item(void *dat)
 {
 	int ret;
 	struct item *it = dat;
-	char *settopic;
 
-	if (mqtt_write_suffix)
-		asprintf(&settopic, "%s/%s", it->topic, mqtt_write_suffix);
-	else
-		settopic = it->topic;
 	/* publish, retained when writing the topic, volatile (not retained) when writing to another topic */
-	ret = mosquitto_publish(mosq, NULL, settopic, strlen(it->resetvalue), it->resetvalue, mqtt_qos, !mqtt_write_suffix);
+	ret = mosquitto_publish(mosq, NULL, it->writetopic ?: it->topic, strlen(it->resetvalue), it->resetvalue, mqtt_qos, !mqtt_write_suffix);
 	if (ret < 0)
-		mylog(LOG_ERR, "mosquitto_publish %s: %s", settopic, mosquitto_strerror(ret));
+		mylog(LOG_ERR, "mosquitto_publish %s: %s", it->writetopic ?: it->topic, mosquitto_strerror(ret));
 	/* clear cache too */
 	it->ontime = 0;
-	mylog(LOG_INFO, "%s = %s", settopic, it->resetvalue);
-	if (settopic != it->topic)
-		free(settopic);
+	mylog(LOG_INFO, "%s = %s", it->writetopic ?: it->topic, it->resetvalue);
 }
 
 static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitto_message *msg)

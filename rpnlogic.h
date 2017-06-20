@@ -11,6 +11,7 @@ struct rpn {
 	struct rpn *next;
 	int (*run)(struct stack *st, struct rpn *me);
 	char *topic;
+	char *options;
 	double value;
 };
 
@@ -24,6 +25,6 @@ void rpn_free_chain(struct rpn *rpn);
 void rpn_rebase(struct rpn *first, struct rpn **newptr);
 
 /* imported function */
-extern double rpn_lookup_env(const char *str);
+extern double rpn_lookup_env(const char *str, struct rpn *);
 
 #endif

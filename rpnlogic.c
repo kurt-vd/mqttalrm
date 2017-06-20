@@ -213,7 +213,7 @@ static int rpn_do_const(struct stack *st, struct rpn *me)
 
 static int rpn_do_env(struct stack *st, struct rpn *me)
 {
-	rpn_push(st, rpn_lookup_env(me->topic));
+	rpn_push(st, rpn_lookup_env(me->topic, me));
 	return 0;
 }
 
@@ -315,8 +315,12 @@ struct rpn *rpn_parse(const char *cstr)
 		} else if (tok[0] == '$' && tok[1] == '{' && tok[strlen(tok)-1] == '}') {
 			rpn = rpn_create();
 			rpn->run = rpn_do_env;
-			rpn->topic = strndup(tok+2, strlen(tok+2)-1);
 
+			rpn->topic = strndup(tok+2, strlen(tok+2)-1);
+			/* seperate options */
+			rpn->options = strrchr(rpn->topic, ',');
+			if (rpn->options)
+				*(rpn->options)++ = 0;
 		} else if ((lookup = do_lookup(tok)) != NULL) {
 			rpn = rpn_create();
 			rpn->run = lookup->run;

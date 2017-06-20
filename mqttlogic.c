@@ -102,6 +102,7 @@ struct topic {
 	char *topic;
 	char *value;
 	int ref;
+	int changed;
 };
 static struct topic *topics;
 static int ntopics; /* used topics */
@@ -164,7 +165,7 @@ struct topic *get_topic(const char *name, int create)
 	return topic;
 }
 
-double rpn_lookup_env(const char *name)
+double rpn_lookup_env(const char *name, struct rpn *rpn)
 {
 	struct topic *topic;
 
@@ -173,6 +174,8 @@ double rpn_lookup_env(const char *name)
 		mylog(LOG_INFO, "topic %s not found", name);
 		return 0;
 	}
+	if (strchr(rpn->options ?: "", '1') && !topic->changed)
+		return 0;
 	return strtod(topic->value, NULL);
 }
 
@@ -319,9 +322,11 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 	free(topic->value);
 	topic->value = strndup(msg->payload ?: "", msg->payloadlen);
 	if (topic->ref) {
+		topic->changed = 1;
 		for (it = items; it; it = it->next)
 			if (rpn_has_ref(it->logic, msg->topic))
 				do_item(it);
+		topic->changed = 0;
 	}
 }
 

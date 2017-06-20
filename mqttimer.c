@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <signal.h>
 #include <stdarg.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -84,8 +85,10 @@ static struct mosquitto *mosq;
 
 struct item {
 	struct item *next;
+	struct item *prev;
 
 	char *topic;
+	int topiclen;
 	char *writetopic;
 	char *resetvalue;
 	double delay;
@@ -115,26 +118,71 @@ static void my_mqtt_log(struct mosquitto *mosq, void *userdata, int level, const
 	}
 }
 
-static struct item *get_item(const char *topic)
+static struct item *get_item(const char *topic, const char *suffix, int create)
 {
 	struct item *it;
+	int len, ret;
 
-	for (it = items; it; it = it->next)
-		if (!strcmp(it->topic, topic))
+	len = strlen(topic ?: "") - strlen(suffix ?: "");
+	if (len < 0)
+		return NULL;
+	/* match suffix */
+	if (strcmp(topic+len, suffix ?: ""))
+		return NULL;
+	/* match base topic */
+	for (it = items; it; it = it->next) {
+		if ((it->topiclen == len) && !strncmp(it->topic ?: "", topic, len))
 			return it;
+	}
+	if (!create)
+		return NULL;
 	/* not found, create one */
 	it = malloc(sizeof(*it));
 	memset(it, 0, sizeof(*it));
 	it->topic = strdup(topic);
+	it->topiclen = len;
 	if (mqtt_write_suffix)
 		asprintf(&it->writetopic, "%s%s", it->topic, mqtt_write_suffix);
 	it->resetvalue = strdup(mqtt_reset_value);
 	it->ontime = it->delay = NAN;
 
+	/* subscribe */
+	ret = mosquitto_subscribe(mosq, NULL, it->topic, mqtt_qos);
+	if (ret)
+		mylog(LOG_ERR, "mosquitto_subscribe '%s': %s", it->topic, mosquitto_strerror(ret));
+
 	/* insert in linked list */
 	it->next = items;
-	items = it;
+	if (it->next) {
+		it->prev = it->next->prev;
+		it->next->prev = it;
+	} else
+		it->prev = (struct item *)(((char *)&items) - offsetof(struct item, next));
+	it->prev->next = it;
 	return it;
+}
+
+static void drop_item(struct item *it)
+{
+	int ret;
+
+	/* remove from list */
+	if (it->prev)
+		it->prev->next = it->next;
+	if (it->next)
+		it->next->prev = it->prev;
+
+	ret = mosquitto_unsubscribe(mosq, NULL, it->topic);
+	if (ret)
+		mylog(LOG_ERR, "mosquitto_unsubscribe '%s': %s", it->topic, mosquitto_strerror(ret));
+
+	/* free memory */
+	free(it->topic);
+	if (it->writetopic)
+		free(it->writetopic);
+	if (it->resetvalue)
+		free(it->resetvalue);
+	free(it);
 }
 
 static void reset_item(void *dat)
@@ -153,47 +201,40 @@ static void reset_item(void *dat)
 
 static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitto_message *msg)
 {
-	int len;
 	char *tok, *topic;
 	struct item *it;
 
-	len = strlen(msg->topic);
-	if (len > mqtt_suffixlen && !strcmp(msg->topic + len - mqtt_suffixlen, mqtt_suffix)) {
-		/* this is a timeout set msg */
-		topic = strdup(msg->topic);
-		topic[len-mqtt_suffixlen] = 0;
-
-		it = get_item(topic);
-		/* don't need this copy anymore */
-		free(topic);
+	if ((it = get_item(msg->topic, mqtt_suffix, !!msg->payloadlen)) != NULL) {
+		/* this is a spec msg */
+		if (!msg->payloadlen) {
+			mylog(LOG_INFO, "removed timer spec for %s", it->topic);
+			libt_remove_timeout(reset_item, it);
+			drop_item(it);
+			return;
+		}
 
 		/* process timeout spec */
-		if (msg->payloadlen) {
-			tok = strtok(msg->payload, " \t");
-			if (tok) {
-				it->delay = strtod(tok, &tok);
-				switch (tolower(*tok)) {
-				case 'w':
-					it->delay *= 7;
-				case 'd':
-					it->delay *= 24;
-				case 'h':
-					it->delay *= 60;
-				case 'm':
-					it->delay *= 60;
-					break;
-				}
-			} else
-				it->delay = NAN;
-			tok = strtok(NULL, " \t");
-			if (tok)
-				it->resetvalue = strdup(tok);
-			else {
-				if (it->resetvalue)
-					free(it->resetvalue);
-				it->resetvalue = strdup(mqtt_reset_value);
+		tok = strtok(msg->payload, " \t");
+		if (tok) {
+			it->delay = strtod(tok, &tok);
+			switch (tolower(*tok)) {
+			case 'w':
+				it->delay *= 7;
+			case 'd':
+				it->delay *= 24;
+			case 'h':
+				it->delay *= 60;
+			case 'm':
+				it->delay *= 60;
+				break;
 			}
-		}
+		} else
+			it->delay = NAN;
+
+		/* find new reset value */
+		free(it->resetvalue);
+		it->resetvalue = strdup(strtok(NULL, " \t") ?: mqtt_reset_value);
+
 		mylog(LOG_INFO, "timer spec for %s: %.2lfs '%s'", it->topic, it->delay, it->resetvalue ?: "");
 
 		libt_remove_timeout(reset_item, it);
@@ -201,25 +242,22 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 			libt_add_timeouta(it->ontime + it->delay, reset_item, it);
 			mylog(LOG_INFO, "%s: schedule action in %.2lfs", it->topic, it->delay);
 		}
-		return;
-	}
-	/* find topic */
-	it = get_item(msg->topic);
 
-	if (!msg->payloadlen)
-		return;
-	if (!strcmp(it->resetvalue, (char *)msg->payload)) {
-		/* value was reset */
-		libt_remove_timeout(reset_item, it);
-		it->ontime = NAN;
-		if (!isnan(it->delay))
-			mylog(LOG_INFO, "%s: reverted, no action required", it->topic);
-	} else if (isnan(it->ontime)) {
-		/* set ontime only on first set */
-		it->ontime = libt_now();
-		libt_add_timeouta(it->ontime + it->delay, reset_item, it);
-		if (!isnan(it->delay))
-			mylog(LOG_INFO, "%s: schedule action in %.2lfs", it->topic, it->delay);
+	} else if ((it = get_item(msg->topic, NULL, 0)) != NULL) {
+		/* this is the main timer topic */
+		if (!strcmp(it->resetvalue, ((char *)msg->payload) ?: "")) {
+			/* value was reset */
+			libt_remove_timeout(reset_item, it);
+			it->ontime = NAN;
+			if (!isnan(it->delay))
+				mylog(LOG_INFO, "%s: reverted, no action required", it->topic);
+		} else if (isnan(it->ontime)) {
+			/* set ontime only on first set */
+			it->ontime = libt_now();
+			libt_add_timeouta(it->ontime + it->delay, reset_item, it);
+			if (!isnan(it->delay))
+				mylog(LOG_INFO, "%s: schedule action in %.2lfs", it->topic, it->delay);
+		}
 	}
 }
 

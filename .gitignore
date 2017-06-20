@@ -3,7 +3,9 @@
 /mqttimer
 /mqttimesw
 /mqttimport
+/mqttled
 /mqttlogic
+/mqttmaclight
 /mqttnow
 /mqttsun
 /rpntest

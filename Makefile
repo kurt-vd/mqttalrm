@@ -2,7 +2,9 @@ PROGS	= mqttalrm
 PROGS	+= mqttimer
 PROGS	+= mqttimesw
 PROGS	+= mqttimport
+PROGS	+= mqttled
 PROGS	+= mqttlogic
+PROGS	+= mqttmaclight
 PROGS	+= mqttnow
 PROGS	+= mqttsun
 default	: $(PROGS)
@@ -29,8 +31,12 @@ mqttimesw: lib/libt.o common.o
 
 mqttimport: lib/libt.o
 
+mqttled: lib/libt.o
+
 mqttlogic: LDLIBS+=-lm
 mqttlogic: lib/libt.o rpnlogic.o
+
+mqttmaclight: lib/libt.o
 
 mqttnow: lib/libt.o
 

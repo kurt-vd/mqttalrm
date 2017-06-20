@@ -140,6 +140,7 @@ static struct item *get_item(const char *topic, int create)
 	return it;
 }
 
+static void sendnow(void *dat);
 static void drop_item(struct item *it)
 {
 	/* remove from list */
@@ -147,6 +148,7 @@ static void drop_item(struct item *it)
 		it->prev->next = it->next;
 	if (it->next)
 		it->next->prev = it->prev;
+	libt_remove_timeout(sendnow, it);
 	/* free memory */
 	free(it->topic);
 	if (it->fmt)
@@ -175,7 +177,7 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 		if (!it)
 			return;
 		/* remove on null config */
-		if (!msg->payload) {
+		if (!msg->payloadlen) {
 			mylog(LOG_INFO, "mqttnow spec for %s removed", it->topic);
 			drop_item(it);
 			return;
@@ -199,7 +201,7 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 
 static void my_exit(void)
 {
-	if (!mosq)
+	if (mosq)
 		mosquitto_disconnect(mosq);
 }
 

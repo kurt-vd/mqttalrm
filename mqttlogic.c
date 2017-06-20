@@ -323,9 +323,13 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 	topic->value = strndup(msg->payload ?: "", msg->payloadlen);
 	if (topic->ref) {
 		topic->changed = 1;
-		for (it = items; it; it = it->next)
+		for (it = items; it; it = it->next) {
+			if (!strcmp(it->topic, msg->topic))
+				/* cut loops */
+				continue;
 			if (rpn_has_ref(it->logic, msg->topic))
 				do_item(it);
+		}
 		topic->changed = 0;
 	}
 }

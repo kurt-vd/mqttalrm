@@ -93,6 +93,21 @@ static int rpn_do_pow(struct stack *st, struct rpn *me)
 	return 0;
 }
 
+/* utilities */
+static int rpn_do_limit(struct stack *st, struct rpn *me)
+{
+	if (st->n < 3)
+		/* stack underflow */
+		return -1;
+	/* limit x-3 between x-2 & x-1 */
+	if (st->v[st->n-3] < st->v[st->n-2])
+		st->v[st->n-3] = st->v[st->n-2];
+	else if (st->v[st->n-3] > st->v[st->n-1])
+		st->v[st->n-3] = st->v[st->n-1];
+	st->n -= 2;
+	return 1;
+}
+
 /* bitwise */
 static int rpn_do_bitand(struct stack *st, struct rpn *me)
 {
@@ -243,7 +258,7 @@ int rpn_run(struct stack *st, struct rpn *rpn)
 
 /* parser */
 static struct lookup {
-	char str[4];
+	const char *str;
 	int (*run)(struct stack *, struct rpn *);
 } const lookups[] = {
 	{ "+", rpn_do_plus, },
@@ -266,6 +281,8 @@ static struct lookup {
 
 	{ "dup", rpn_do_dup, },
 	{ "swap", rpn_do_swap, },
+
+	{ "lim", rpn_do_limit, },
 	{},
 };
 

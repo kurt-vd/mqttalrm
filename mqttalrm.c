@@ -41,7 +41,6 @@ static const char help_msg[] =
 	" -V, --version		Show version\n"
 	" -v, --verbose		Be more verbose\n"
 	" -m, --mqtt=HOST[:PORT]Specify alternate MQTT host+port\n"
-	" -s, --snooze=TIME	Specify snooze time (default 9m)\n"
 	"\n"
 	"Paramteres\n"
 	" PATTERN	A pattern to subscribe for (default alarms/+/+)\n"
@@ -54,14 +53,13 @@ static struct option long_opts[] = {
 	{ "verbose", no_argument, NULL, 'v', },
 
 	{ "mqtt", required_argument, NULL, 'm', },
-	{ "snooze", required_argument, NULL, 's', },
 	{ },
 };
 #else
 #define getopt_long(argc, argv, optstring, longopts, longindex) \
 	getopt((argc), (argv), (optstring))
 #endif
-static const char optstring[] = "Vv?m:s:";
+static const char optstring[] = "Vv?m:";
 
 /* signal handler */
 static volatile int sigterm;
@@ -71,7 +69,6 @@ static const char *mqtt_host = "localhost";
 static int mqtt_port = 1883;
 static int mqtt_keepalive = 10;
 static int mqtt_qos = 1;
-static int snooze_time = 9*60;
 
 /* alarm states */
 static const char *const alrm_states[] = {
@@ -177,7 +174,6 @@ static struct item *get_item(const char *topic, const char *suffix, int create)
 
 	it->enabled = 1;
 	it->wdays = 0x7f; /* all days */
-	it->snooze_time = snooze_time;
 	/* insert in linked list */
 	it->next = items;
 	if (it->next) {
@@ -231,7 +227,7 @@ static void snooze_alrm(struct item *it)
 		return;
 	}
 	libt_add_timeout(it->snooze_time, on_alrm, it);
-	mylog(LOG_INFO, "snoozed %s for %us", it->topic, snooze_time);
+	mylog(LOG_INFO, "snoozed %s for %us", it->topic, it->snooze_time);
 	if (it->state != ALRM_SNOOZED) {
 		it->state = ALRM_SNOOZED;
 		pub_alrm_state(it);
@@ -396,7 +392,7 @@ static void my_exit(void)
 int main(int argc, char *argv[])
 {
 	int opt, ret, waittime;
-	char *str, *endp;
+	char *str;
 	char mqtt_name[32];
 	int logmask = LOG_UPTO(LOG_NOTICE);
 
@@ -424,20 +420,6 @@ int main(int argc, char *argv[])
 			/* TCP port provided */
 			*str = 0;
 			mqtt_port = strtoul(str+1, NULL, 10);
-		}
-		break;
-	case 's':
-		snooze_time = strtoul(optarg, &endp, 0);
-		switch (*endp) {
-		case 'w':
-			snooze_time *= 7;
-		case 'd':
-			snooze_time *= 24;
-		case 'h':
-			snooze_time *= 60;
-		case 'm':
-			snooze_time *= 60;
-			break;
 		}
 		break;
 

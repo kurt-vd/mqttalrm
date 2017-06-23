@@ -201,7 +201,7 @@ static void reset_item(void *dat)
 
 static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitto_message *msg)
 {
-	char *tok, *topic;
+	char *tok;
 	struct item *it;
 
 	if ((it = get_item(msg->topic, mqtt_suffix, !!msg->payloadlen)) != NULL) {

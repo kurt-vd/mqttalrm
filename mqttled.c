@@ -189,6 +189,17 @@ static void my_mqtt_log(struct mosquitto *mosq, void *userdata, int level, const
 	}
 }
 
+static int test_suffix(const char *topic, const char *suffix)
+{
+	int len;
+
+	len = strlen(topic ?: "") - strlen(suffix ?: "");
+	if (len < 0)
+		return 0;
+	/* match suffix */
+	return !strcmp(topic+len, suffix ?: "");
+}
+
 static struct item *get_item(const char *topic, const char *suffix, int create)
 {
 	struct item *it;
@@ -272,10 +283,24 @@ static void setled(struct item *it, const char *newvalue, int republish)
 static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitto_message *msg)
 {
 	int j;
-	char *tok, *path;
+	char *path, *ledname, *nodename;
 	struct item *it;
 
-	if ((it = get_item(msg->topic, mqtt_suffix, !!msg->payloadlen)) != NULL) {
+	if (test_suffix(msg->topic, mqtt_suffix)) {
+		/* grab boardname */
+		ledname = strtok(msg->payload ?: "", " \t");
+		nodename = strtok(NULL, " \t");
+		if (nodename) {
+			/* test node name */
+			static char mynodename[128];
+
+			gethostname(mynodename, sizeof(mynodename));
+			if (strcmp(mynodename, nodename))
+				return;
+		}
+		it = get_item(msg->topic, mqtt_suffix, !!msg->payloadlen);
+		if (!it)
+			return;
 		/* this is a spec msg */
 		if (!msg->payloadlen) {
 			mylog(LOG_INFO, "removed led spec for %s", it->topic);
@@ -288,7 +313,6 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 		it->sysfsdir = NULL;
 
 		/* process new led spec */
-		tok = strtok(msg->payload, " \t");
 		/* find full path for led or brightness */
 		static const char *const sysfsdir_fmts[] = {
 			"/sys/class/leds/%s",
@@ -298,7 +322,7 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 		};
 		struct stat st;
 		for (j = 0; sysfsdir_fmts[j]; ++j) {
-			asprintf(&path, sysfsdir_fmts[j], tok);
+			asprintf(&path, sysfsdir_fmts[j], ledname);
 			if (!stat(path, &st)) {
 				it->sysfsdir = path;
 				break;
@@ -306,7 +330,7 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 			free(path);
 		}
 		if (!it->sysfsdir) {
-			mylog(LOG_INFO, "%s: %s is no led or brightness", it->topic, tok);
+			mylog(LOG_INFO, "%s: %s is no led or brightness", it->topic, ledname);
 			drop_item(it);
 			return;
 		}

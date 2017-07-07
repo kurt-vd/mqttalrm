@@ -39,6 +39,7 @@ static const char help_msg[] =
 	" -v, --verbose		Be more verbose\n"
 	" -m, --mqtt=HOST[:PORT]Specify alternate MQTT host+port\n"
 	" -q, --qos=QoS		Set QoS to use (default 1)\n"
+	" -f, --force		Always write\n"
 	;
 
 #ifdef _GNU_SOURCE
@@ -49,6 +50,7 @@ static struct option long_opts[] = {
 
 	{ "mqtt", required_argument, NULL, 'm', },
 	{ "qos", required_argument, NULL, 'q', },
+	{ "force", no_argument, NULL, 'f', },
 
 	{ },
 };
@@ -56,7 +58,7 @@ static struct option long_opts[] = {
 #define getopt_long(argc, argv, optstring, longopts, longindex) \
 	getopt((argc), (argv), (optstring))
 #endif
-static const char optstring[] = "Vv?m:q:";
+static const char optstring[] = "Vv?m:q:f";
 
 /* signal handler */
 static volatile int sigterm;
@@ -66,6 +68,7 @@ static const char *mqtt_host = "localhost";
 static int mqtt_port = 1883;
 static int mqtt_keepalive = 10;
 static int mqtt_qos = 1;
+static int force = 0;
 
 /* state */
 static struct mosquitto *mosq;
@@ -245,6 +248,9 @@ int main(int argc, char *argv[])
 	case 'q':
 		mqtt_qos = strtoul(optarg, NULL, 0);
 		break;
+	case 'f':
+		force = 1;
+		break;
 
 	default:
 		fprintf(stderr, "unknown option '%c'", opt);
@@ -301,6 +307,8 @@ int main(int argc, char *argv[])
 		ret = mosquitto_subscribe(mosq, NULL, it->topic, mqtt_qos);
 		if (ret)
 			mylog(LOG_ERR, "mosquitto_subscribe %s: %s", it->topic, mosquitto_strerror(ret));
+		if (force)
+			send_item(it);
 	}
 	if (line)
 		free(line);

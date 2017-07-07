@@ -15,8 +15,6 @@
 #include <syslog.h>
 #include <mosquitto.h>
 
-#include "lib/libt.h"
-
 #define NAME "mqttimport"
 #ifndef VERSION
 #define VERSION "<undefined version>"
@@ -76,6 +74,7 @@ struct item {
 	struct item *next;
 	struct item *prev;
 
+	int imported;
 	char *topic;
 	char *value;
 };
@@ -86,6 +85,28 @@ static struct item *items;
 static void onsigterm(int signr)
 {
 	sigterm = 1;
+}
+
+/* self-sync */
+static char *myuuid;
+static const char selfsynctopic[] = "tmp/selfsync";
+static void send_self_sync(struct mosquitto *mosq)
+{
+	int ret;
+
+	asprintf(&myuuid, "%i-%li-%i", getpid(), time(NULL), rand());
+
+	ret = mosquitto_subscribe(mosq, NULL, selfsynctopic, mqtt_qos);
+	if (ret)
+		mylog(LOG_ERR, "mosquitto_subscribe %s: %s", selfsynctopic, mosquitto_strerror(ret));
+	ret = mosquitto_publish(mosq, NULL, selfsynctopic, strlen(myuuid), myuuid, mqtt_qos, 0);
+	if (ret < 0)
+		mylog(LOG_ERR, "mosquitto_publish %s: %s", selfsynctopic, mosquitto_strerror(ret));
+}
+static int is_self_sync(const struct mosquitto_message *msg)
+{
+	return !strcmp(msg->topic, selfsynctopic) &&
+		!strcmp(myuuid ?: "", msg->payload ?: "");
 }
 
 /* MQTT iface */
@@ -148,31 +169,34 @@ static void drop_item(struct item *it)
 	free(it);
 }
 
-static void ontimeout(void *dat);
-static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitto_message *msg)
+static void send_item(struct item *it)
 {
-	struct item *it;
-
-	for (it = items; it; it = it->next) {
-		if (!strcmp(msg->topic, it->topic)) {
-			mylog(LOG_INFO, "leave %s", it->topic);
-			libt_remove_timeout(ontimeout, it);
-			drop_item(it);
-			return;
-		}
-	}
-}
-
-static void ontimeout(void *dat)
-{
-	struct item *it = dat;
 	int ret;
 
 	mylog(LOG_NOTICE, "import %s", it->topic);
 	ret = mosquitto_publish(mosq, NULL, it->topic, strlen(it->value ?: ""), it->value, mqtt_qos, 1);
 	if (ret < 0)
 		mylog(LOG_ERR, "mosquitto_publish %s: %s", it->topic, mosquitto_strerror(ret));
-	drop_item(it);
+	it->imported = 1;
+}
+
+static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitto_message *msg)
+{
+	struct item *it;
+
+	if (is_self_sync(msg)) {
+		for (it = items; it; it = it->next)
+			send_item(it);
+	}
+
+	for (it = items; it; it = it->next) {
+		if (!strcmp(msg->topic, it->topic)) {
+			if (!it->imported)
+				mylog(LOG_INFO, "leave %s", it->topic);
+			drop_item(it);
+			return;
+		}
+	}
 }
 
 static void my_exit(void)
@@ -183,7 +207,7 @@ static void my_exit(void)
 
 int main(int argc, char *argv[])
 {
-	int opt, ret, waittime;
+	int opt, ret;
 	char *str, *tok;
 	char mqtt_name[32];
 	int logmask = LOG_UPTO(LOG_NOTICE);
@@ -277,18 +301,14 @@ int main(int argc, char *argv[])
 		ret = mosquitto_subscribe(mosq, NULL, it->topic, mqtt_qos);
 		if (ret)
 			mylog(LOG_ERR, "mosquitto_subscribe %s: %s", it->topic, mosquitto_strerror(ret));
-		libt_add_timeout(1, ontimeout, it);
 	}
 	if (line)
 		free(line);
+	send_self_sync(mosq);
 
 	/* loop */
 	while (!sigterm && items) {
-		libt_flush();
-		waittime = libt_get_waittime();
-		if (waittime > 1000)
-			waittime = 1000;
-		ret = mosquitto_loop(mosq, waittime, 1);
+		ret = mosquitto_loop(mosq, 1000, 1);
 		if (ret)
 			mylog(LOG_ERR, "mosquitto_loop: %s", mosquitto_strerror(ret));
 	}

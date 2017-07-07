@@ -29,8 +29,6 @@ mqttimer: lib/libt.o
 
 mqttimesw: lib/libt.o common.o
 
-mqttimport: lib/libt.o
-
 mqttled: lib/libt.o
 
 mqttlogic: LDLIBS+=-lm

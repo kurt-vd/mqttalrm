@@ -40,6 +40,7 @@ static const char help_msg[] =
 	" -V, --version		Show version\n"
 	" -v, --verbose		Be more verbose\n"
 	" -m, --mqtt=HOST[:PORT]Specify alternate MQTT host+port\n"
+	" -q, --qos=QoS		Set QoS to use (default 1)\n"
 	;
 
 #ifdef _GNU_SOURCE
@@ -49,6 +50,7 @@ static struct option long_opts[] = {
 	{ "verbose", no_argument, NULL, 'v', },
 
 	{ "mqtt", required_argument, NULL, 'm', },
+	{ "qos", required_argument, NULL, 'q', },
 
 	{ },
 };
@@ -56,7 +58,7 @@ static struct option long_opts[] = {
 #define getopt_long(argc, argv, optstring, longopts, longindex) \
 	getopt((argc), (argv), (optstring))
 #endif
-static const char optstring[] = "Vv?m:";
+static const char optstring[] = "Vv?m:q:";
 
 /* signal handler */
 static volatile int sigterm;
@@ -215,6 +217,9 @@ int main(int argc, char *argv[])
 			*str = 0;
 			mqtt_port = strtoul(str+1, NULL, 10);
 		}
+		break;
+	case 'q':
+		mqtt_qos = strtoul(optarg, NULL, 0);
 		break;
 
 	default:

@@ -200,6 +200,19 @@ static int test_suffix(const char *topic, const char *suffix)
 	return !strcmp(topic+len, suffix ?: "");
 }
 
+static int test_nodename(const char *nodename)
+{
+	/* test node name */
+	static char mynodename[128];
+
+	if (!nodename)
+		/* empty nodename matches always */
+		return 1;
+
+	gethostname(mynodename, sizeof(mynodename));
+	return !strcmp(mynodename, nodename);
+}
+
 static struct item *get_item(const char *topic, const char *suffix, int create)
 {
 	struct item *it;
@@ -282,27 +295,19 @@ static void setled(struct item *it, const char *newvalue, int republish)
 
 static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitto_message *msg)
 {
-	int j;
-	char *path, *ledname, *nodename;
+	int j, forme;
+	char *path, *ledname;
 	struct item *it;
 
 	if (test_suffix(msg->topic, mqtt_suffix)) {
 		/* grab boardname */
 		ledname = strtok(msg->payload ?: "", " \t");
-		nodename = strtok(NULL, " \t");
-		if (nodename) {
-			/* test node name */
-			static char mynodename[128];
-
-			gethostname(mynodename, sizeof(mynodename));
-			if (strcmp(mynodename, nodename))
-				return;
-		}
-		it = get_item(msg->topic, mqtt_suffix, !!msg->payloadlen);
+		forme = test_nodename(strtok(NULL, " \t"));
+		it = get_item(msg->topic, mqtt_suffix, !!msg->payloadlen && forme);
 		if (!it)
 			return;
 		/* this is a spec msg */
-		if (!msg->payloadlen) {
+		if (!msg->payloadlen || !forme) {
 			mylog(LOG_INFO, "removed led spec for %s", it->topic);
 			drop_item(it);
 			return;

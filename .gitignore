@@ -1,5 +1,6 @@
 # output
 /mqttalrm
+/mqttinputevent
 /mqttimer
 /mqttimesw
 /mqttimport

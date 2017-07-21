@@ -1,4 +1,5 @@
 PROGS	= mqttalrm
+PROGS	+= mqttinputevent
 PROGS	+= mqttimer
 PROGS	+= mqttimesw
 PROGS	+= mqttimport

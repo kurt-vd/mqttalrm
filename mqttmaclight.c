@@ -41,7 +41,7 @@ static const char help_msg[] =
 	" -V, --version		Show version\n"
 	" -v, --verbose		Be more verbose\n"
 	" -m, --mqtt=HOST[:PORT]Specify alternate MQTT host+port\n"
-	" -s, --suffix=STR	Give MQTT topic suffix for spec (default '/local:maqlit')\n"
+	" -s, --suffix=STR	Give MQTT topic suffix for spec (default '/maclighthw')\n"
 	"\n"
 	"Paramteres\n"
 	" PATTERN	A pattern to subscribe for\n"
@@ -70,8 +70,8 @@ static volatile int sigterm;
 /* MQTT parameters */
 static const char *mqtt_host = "localhost";
 static int mqtt_port = 1883;
-static const char *mqtt_suffix = "/spec:maclight";
-static int mqtt_suffixlen = 14;
+static const char *mqtt_suffix = "/maclighthw";
+static int mqtt_suffixlen = 11;
 static int mqtt_keepalive = 10;
 static int mqtt_qos = 1;
 

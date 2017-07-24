@@ -139,7 +139,7 @@ static struct item *get_item(const char *topic, const char *suffix, int create)
 	/* not found, create one */
 	it = malloc(sizeof(*it));
 	memset(it, 0, sizeof(*it));
-	it->topic = strdup(topic);
+	it->topic = strndup(topic, len);
 	it->topiclen = len;
 	if (mqtt_write_suffix)
 		asprintf(&it->writetopic, "%s%s", it->topic, mqtt_write_suffix);

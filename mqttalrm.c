@@ -246,7 +246,7 @@ static void reschedule_alrm(struct item *it)
 	if (!it->valid)
 		return;
 	else if (!it->enabled)
-		mylog(LOG_INFO, "disabled '%s'", it->topic);
+		return;
 	else if (!it->wdays)
 		mylog(LOG_INFO, "no days selected for '%s'", it->topic);
 	else {
@@ -329,6 +329,7 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 		val = strtoul(msg->payload ?: "1", 0, 0);
 
 		if (val != it->enabled) {
+			mylog(LOG_INFO, "%s '%s'", val ? "enabled" : "disabled", it->topic);
 			it->enabled = val;
 			reschedule_alrm(it);
 		}

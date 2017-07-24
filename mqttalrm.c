@@ -245,7 +245,7 @@ static void reschedule_alrm(struct item *it)
 	}
 	if (!it->valid)
 		return;
-	else if (it->enabled)
+	else if (!it->enabled)
 		mylog(LOG_INFO, "disabled '%s'", it->topic);
 	else if (!it->wdays)
 		mylog(LOG_INFO, "no days selected for '%s'", it->topic);

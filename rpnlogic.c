@@ -283,7 +283,7 @@ static struct lookup {
 	{ "swap", rpn_do_swap, },
 
 	{ "lim", rpn_do_limit, },
-	{},
+	{ "", },
 };
 
 static const struct lookup *do_lookup(const char *tok)

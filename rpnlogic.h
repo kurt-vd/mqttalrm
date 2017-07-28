@@ -14,6 +14,7 @@ struct rpn {
 	char *topic;
 	char *options;
 	double value;
+	int cookie;
 };
 
 /* functions */

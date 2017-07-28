@@ -43,7 +43,7 @@ mqttsun: LDLIBS+=-lm
 mqttsun: lib/libt.o sunposition.o
 
 rpntest: LDLIBS+=-lm
-rpntest: rpnlogic.o
+rpntest: lib/libt.o rpnlogic.o
 
 install: $(PROGS)
 	$(foreach PROG, $(PROGS), install -vp -m 0777 $(INSTOPTS) $(PROG) $(DESTDIR)$(PREFIX)/bin/$(PROG);)

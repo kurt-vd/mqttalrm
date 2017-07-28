@@ -6,6 +6,7 @@
 
 #include <syslog.h>
 
+#include "lib/libt.h"
 #include "rpnlogic.h"
 
 #define mylog(loglevel, fmt, ...) \
@@ -238,6 +239,91 @@ static int rpn_do_swap(struct stack *st, struct rpn *me)
 	return 0;
 }
 
+/* timer functions */
+static void on_delay(void *dat)
+{
+	struct rpn *me = dat;
+
+	/* clear output */
+	me->cookie ^= 2;
+	rpn_run_again(me->dat);
+}
+static int rpn_do_offdelay(struct stack *st, struct rpn *me)
+{
+	int inval;
+
+	if (st->n < 2)
+		/* stack underflow */
+		return -1;
+
+	inval = (int)st->v[st->n-2];
+
+	if (!inval && (me->cookie & 1))
+		/* falling edge: schedule timeout */
+		libt_add_timeout(st->v[st->n-1], on_delay, me);
+	else if (inval && !(me->cookie & 1)) {
+		/* rising edge: cancel timeout */
+		libt_remove_timeout(on_delay, me);
+		/* set high output */
+		me->cookie |= 2;
+	}
+	me->cookie = (me->cookie & ~1) | !!inval;
+	/* write output to stack */
+	st->v[st->n-2] = !!(me->cookie & 2);
+	st->n -= 1;
+	return 0;
+}
+static int rpn_do_ondelay(struct stack *st, struct rpn *me)
+{
+	int inval;
+
+	if (st->n < 2)
+		/* stack underflow */
+		return -1;
+
+	inval = (int)st->v[st->n-2];
+
+	if (inval && !(me->cookie & 1))
+		/* rising edge: schedule timeout */
+		libt_add_timeout(st->v[st->n-1], on_delay, me);
+	else if (!inval && (me->cookie & 1)) {
+		/* falling edge: cancel timeout */
+		libt_remove_timeout(on_delay, me);
+		/* set low output */
+		me->cookie &= ~2;
+	}
+	me->cookie = (me->cookie & ~1) | !!inval;
+	/* write output to stack */
+	st->v[st->n-2] = !!(me->cookie & 2);
+	st->n -= 1;
+	return 0;
+}
+static int rpn_do_pulse(struct stack *st, struct rpn *me)
+{
+	int inval;
+
+	if (st->n < 2)
+		/* stack underflow */
+		return -1;
+
+	inval = (int)st->v[st->n-2];
+
+	if (inval && !(me->cookie & 1)) {
+		/* rising edge: schedule timeout */
+		libt_add_timeout(st->v[st->n-1], on_delay, me);
+		/* set high output */
+		me->cookie |= 2;
+	} else if (!inval && (me->cookie & 1)) {
+		/* falling edge: cancel timeout */
+		libt_remove_timeout(on_delay, me);
+	}
+	me->cookie = (me->cookie & ~1) | !!inval;
+	/* write output to stack */
+	st->v[st->n-2] = !!(me->cookie & 2);
+	st->n -= 1;
+	return 0;
+}
+
 /* run time functions */
 void rpn_stack_reset(struct stack *st)
 {
@@ -283,6 +369,10 @@ static struct lookup {
 	{ "swap", rpn_do_swap, },
 
 	{ "lim", rpn_do_limit, },
+
+	{ "ondelay", rpn_do_ondelay, },
+	{ "offdelay", rpn_do_offdelay, },
+	{ "pulse", rpn_do_pulse, },
 	{ "", },
 };
 

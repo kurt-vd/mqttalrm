@@ -298,7 +298,7 @@ static const struct lookup *do_lookup(const char *tok)
 }
 
 static const char digits[] = "0123456789";
-struct rpn *rpn_parse(const char *cstr)
+struct rpn *rpn_parse(const char *cstr, void *dat)
 {
 	char *savedstr;
 	char *tok;
@@ -332,6 +332,7 @@ struct rpn *rpn_parse(const char *cstr)
 			root = NULL;
 			break;
 		}
+		rpn->dat = dat;
 		if (last)
 			last->next = rpn;
 		if (!root)

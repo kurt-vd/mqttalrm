@@ -275,6 +275,10 @@ static void do_item(struct item *it)
 		free(it->lastvalue);
 	it->lastvalue = strdup(buf);
 }
+void rpn_run_again(void *dat)
+{
+	return do_item(dat);
+}
 
 static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitto_message *msg)
 {
@@ -308,7 +312,7 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 			it->fmt = strdup(str);
 			/* TODO: verify this format string */
 		}
-		it->logic = rpn_parse(msg->payload);
+		it->logic = rpn_parse(msg->payload, it);
 		rpn_ref(it->logic);
 		mylog(LOG_INFO, "new logic for %s", it->topic);
 		/* ready, first run */

@@ -12,6 +12,9 @@ double rpn_lookup_env(const char *str, struct rpn *rpn)
 {
 	return strtod(getenv(str) ?: "0", NULL);
 }
+void rpn_run_again(void *dat)
+{
+}
 
 int main(int argc, char *argv[])
 {
@@ -23,7 +26,7 @@ int main(int argc, char *argv[])
 	fmt = strrchr(input, ' ');
 	if (fmt && fmt[1] == '%')
 		*fmt++ = 0;
-	rpn = rpn_parse(input);
+	rpn = rpn_parse(input, NULL);
 	if (!rpn)
 		return 1;
 	if (rpn_run(&rpnstack, rpn))

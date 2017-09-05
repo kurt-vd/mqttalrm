@@ -1,13 +1,6 @@
 PROGS	= mqttalrm
-PROGS	+= mqttinputevent
 PROGS	+= mqttimer
 PROGS	+= mqttimesw
-PROGS	+= mqttimport
-PROGS	+= mqttled
-PROGS	+= mqttlogic
-PROGS	+= mqttmaclight
-PROGS	+= mqttnow
-PROGS	+= mqttsun
 default	: $(PROGS)
 
 PREFIX	= /usr/local
@@ -29,21 +22,6 @@ mqttalrm: lib/libt.o common.o
 mqttimer: lib/libt.o
 
 mqttimesw: lib/libt.o common.o
-
-mqttled: lib/libt.o
-
-mqttlogic: LDLIBS+=-lm
-mqttlogic: lib/libt.o rpnlogic.o
-
-mqttmaclight: lib/libt.o
-
-mqttnow: lib/libt.o
-
-mqttsun: LDLIBS+=-lm
-mqttsun: lib/libt.o sunposition.o
-
-rpntest: LDLIBS+=-lm
-rpntest: lib/libt.o rpnlogic.o
 
 install: $(PROGS)
 	$(foreach PROG, $(PROGS), install -vp -m 0777 $(INSTOPTS) $(PROG) $(DESTDIR)$(PREFIX)/bin/$(PROG);)

@@ -1,14 +1,11 @@
 # mqttalrm
 
 This projects implements a traditional alarm clock using MQTT.
-It consists of several cooperating tools that communicate
-via MQTT.
+It may need several cooperating tools, see
+http://github.com/kurt-vd/mqttautomation.
 
 Via retained messages, the MQTT broker provides the storage
 for the alarms.
-
-Since more & more tools were added, this project can be used
-in several other projects. I use it also for my home automation...
 
 # example use
 ## binaries
@@ -18,8 +15,6 @@ Run these commands (or start with your init system).
 	$ mqttalrm -v 'alarms/+' 'alarms/+/+' &
 	$ mqttimer -v alarms/+ alarms/+/timer &
 	$ mqttimesw -v alarms/+ alarms/+/+ &
-	$ mqttnow -v -s /fmtnow &
-	$ mqttsun -v 'state/+' &
 
 ## MQTT topic layout
 
@@ -37,12 +32,6 @@ Run these commands (or start with your init system).
 * alarms/NAME3/repeat
 * alarms/NAME3/enable
 * alarms/NAME3/skip	see above
-* state/time		**dow, HH:MM:SS**, current system time
-* state/time/fmtnow	**%a, %H:%M:%S**, current system time strftime format
-* state/lat		Geo position's lattitude
-* state/lon		Geo position's longitude
-* state/sun/elv		Current's sun elevation
-* state/sun/azm		Sun's azimuth
 
 # tools
 ## mqttalrm
@@ -57,19 +46,14 @@ Run these commands (or start with your init system).
 * Listens to all attributes, actually uses **start**, **stop**, **repeat**, **enable**, **skip**
 * changes the state to 1 on start, and 0 on stop.
 
+mqttimesw is obsoleted by improved mqttlogic tool.
+
 ## mqttimer
 
 * listens to state & statetimer
 * turns off state after the time specified by statetimer
 
-## mqttnow
-
-* publishes/updates the current system time
-
-## mqttsun
-
-* publishes the sun's position, based on lattitude+longitude.
-* Multiple geo locations are supported.
+mqttimer is obsoleted by improved mqttlogic tool.
 
 ## alarm.html
 
@@ -77,7 +61,7 @@ A web gui using mosquitto websockets.
 This will allow you to add/remove alarms, control all sorts of things
 
 The html page added 1 extra **sleeptimer** within the alarms.
-mqttoff will pick it up, just as all alarm listeners.
+mqtttimer will pick it up, just as all alarm listeners.
 mqttalrm will never raise it due to its +/alarm abscense.
 
 Multiple alarms & timeswitches can be defined.

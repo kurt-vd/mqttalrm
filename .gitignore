@@ -1,15 +1,7 @@
 # output
 /mqttalrm
-/mqttinputevent
 /mqttimer
 /mqttimesw
-/mqttimport
-/mqttled
-/mqttlogic
-/mqttmaclight
-/mqttnow
-/mqttsun
-/rpntest
 
 # temp
 *.o

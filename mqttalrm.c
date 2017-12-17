@@ -89,6 +89,7 @@ struct item {
 
 	char *topic;
 	int topiclen;
+	int namepos; /* position in topic where name starts */
 	int hhmm;
 	int wdays; /* bitmask */
 	int valid; /* definition has been seen */
@@ -171,6 +172,11 @@ static struct item *get_item(const char *topic, const char *suffix, int create)
 	/* assign dup'd topic to item, no need to dup twice, no need to free */
 	it->topic = strndup(topic, len);
 	it->topiclen = strlen(it->topic);
+	char *name = strrchr(it->topic, '/');
+	if (name)
+		it->namepos = name - it->topic +1;
+	else
+		it->namepos = 0;
 
 	it->enabled = 1;
 	it->wdays = 0x7f; /* all days */
@@ -195,6 +201,14 @@ static void drop_item(struct item *it)
 	free(it);
 }
 
+static void pub_alrm_event(struct item *it)
+{
+	static char alltopic[32];
+
+	sprintf(alltopic, "state/alrm/%s", alrm_states[it->state]);
+	mosquitto_publish(mosq, NULL, alltopic, it->topiclen - it->namepos, it->topic+it->namepos, mqtt_qos, 0);
+}
+
 static void pub_alrm_state(struct item *it)
 {
 	const char *state = alrm_states[it->state];
@@ -217,6 +231,7 @@ static void on_alrm(void *dat)
 	}
 	it->state = ALRM_ON;
 	pub_alrm_state(it);
+	pub_alrm_event(it);
 }
 
 static void snooze_alrm(struct item *it)
@@ -231,6 +246,7 @@ static void snooze_alrm(struct item *it)
 	if (it->state != ALRM_SNOOZED) {
 		it->state = ALRM_SNOOZED;
 		pub_alrm_state(it);
+		pub_alrm_event(it);
 	}
 }
 
@@ -242,6 +258,7 @@ static void reschedule_alrm(struct item *it)
 	if (it->state != ALRM_OFF) {
 		it->state = ALRM_OFF;
 		pub_alrm_state(it);
+		pub_alrm_event(it);
 	}
 	if (!it->valid)
 		return;
@@ -365,6 +382,7 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 			return;
 		mylog(LOG_INFO, "new state %s = '%s'", msg->topic, alrm_states[val]);
 		it->state = val;
+		pub_alrm_event(it);
 		switch (val) {
 		case ALRM_OFF:
 			dismiss_alrm(it);

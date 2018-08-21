@@ -312,8 +312,8 @@ static void reschedule_alrm(struct item *it)
 		it->state = ALRM_OFF;
 		pub_alrm_state(it);
 		pub_alrm_event(it);
-		it->scheduled = 0;
 	}
+	it->scheduled = 0;
 	if (!it->valid || !it->enabled)
 		;
 	else if (!it->wdays)

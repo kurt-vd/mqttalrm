@@ -12,7 +12,9 @@
 
 #include <unistd.h>
 #include <getopt.h>
+#include <poll.h>
 #include <syslog.h>
+#include <sys/timerfd.h>
 #include <mosquitto.h>
 
 #include "lib/libt.h"
@@ -82,6 +84,9 @@ static const char *const alrm_states[] = {
 
 /* state */
 static struct mosquitto *mosq;
+/* timerfd */
+static int tfd;
+static time_t tfd_setp;
 
 struct item {
 	struct item *next;
@@ -98,19 +103,19 @@ struct item {
 
 	int state;
 	int snooze_time;
+	time_t scheduled;
 };
 
 struct item *items;
 
 static void reschedule_alrm(struct item *it);
 
-long next_alarm(const struct item *it)
+time_t next_alarm(const struct item *it, time_t tnow)
 {
 	struct tm tm;
-	time_t tnow, tnext;
+	time_t tnext;
 	int j;
 
-	time(&tnow);
 	tm = *localtime(&tnow);
 	tm.tm_hour = it->hhmm / 100;
 	tm.tm_min = it->hhmm % 100;
@@ -126,7 +131,7 @@ long next_alarm(const struct item *it)
 		tm.tm_mday += 1;
 		tnext = mktime_dstsafe(&tm);
 	}
-	return tnext - tnow;
+	return tnext;
 }
 
 /* MQTT iface */
@@ -229,6 +234,7 @@ static void on_alrm(void *dat)
 		reschedule_alrm(it);
 		return;
 	}
+	it->scheduled = 0;
 	it->state = ALRM_ON;
 	pub_alrm_state(it);
 	pub_alrm_event(it);
@@ -250,6 +256,29 @@ static void snooze_alrm(struct item *it)
 	}
 }
 
+static void arm_timerfd(void)
+{
+	time_t next = 0;
+	int ret;
+	struct item *it;
+
+	/* walk over items, and find the earliest alarm */
+	for (it = items; it; it = it->next) {
+		if (it->scheduled && (!next || it->scheduled < next))
+			next = it->scheduled;
+	}
+	/* schedule timerfd */
+	struct itimerspec spec = {
+		.it_value = {
+			.tv_sec = next,
+		},
+	};
+	ret = timerfd_settime(tfd, TFD_TIMER_ABSTIME, &spec, NULL);
+	if (ret < 0)
+		mylog(LOG_ERR, "timerfd_settime: %s", ESTR(errno));
+	tfd_setp = next;
+}
+
 /* dismiss & reschedule do the same thing */
 #define dismiss_alrm reschedule_alrm
 static void reschedule_alrm(struct item *it)
@@ -259,20 +288,20 @@ static void reschedule_alrm(struct item *it)
 		it->state = ALRM_OFF;
 		pub_alrm_state(it);
 		pub_alrm_event(it);
+		it->scheduled = 0;
 	}
-	if (!it->valid)
-		return;
-	else if (!it->enabled)
-		return;
+	if (!it->valid || !it->enabled)
+		;
 	else if (!it->wdays)
 		mylog(LOG_INFO, "no days selected for '%s'", it->topic);
 	else {
-		long delay;
+		time_t tnow;
 
-		delay = next_alarm(it);
-		libt_add_timeout(delay, on_alrm, it);
-		mylog(LOG_INFO, "scheduled '%s' in %lus", it->topic, delay);
+		time(&tnow);
+		it->scheduled = next_alarm(it, tnow);
+		mylog(LOG_INFO, "scheduled '%s' in %lus", it->topic, it->scheduled - tnow);
 	}
+	arm_timerfd();
 }
 
 static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitto_message *msg)
@@ -408,12 +437,23 @@ static void my_exit(void)
 		mosquitto_disconnect(mosq);
 }
 
+static void do_mqtt_maintenance(void *dat)
+{
+	int ret;
+
+	ret = mosquitto_loop_misc(dat);
+	if (ret)
+		mylog(LOG_ERR, "mosquitto_loop_misc: %s", mosquitto_strerror(ret));
+	libt_add_timeout(1, do_mqtt_maintenance, dat);
+}
+
 int main(int argc, char *argv[])
 {
-	int opt, ret, waittime;
+	int opt, ret;
 	char *str;
 	char mqtt_name[32];
 	int logmask = LOG_UPTO(LOG_NOTICE);
+	struct item *it;
 
 	/* argument parsing */
 	while ((opt = getopt_long(argc, argv, optstring, long_opts, NULL)) >= 0)
@@ -481,14 +521,54 @@ int main(int argc, char *argv[])
 			mylog(LOG_ERR, "mosquitto_subscribe %s: %s", argv[optind], mosquitto_strerror(ret));
 	}
 
+	/* timerfd */
+	tfd = timerfd_create(CLOCK_REALTIME, TFD_NONBLOCK);
+	if (tfd < 0)
+		mylog(LOG_ERR, "timerfd_create: %s", ESTR(errno));
+
+	/* loop */
+	libt_add_timeout(0, do_mqtt_maintenance, mosq);
+	struct pollfd pf[2] = {
+		[0] = { .fd = mosquitto_socket(mosq), .events = POLL_IN, },
+		[1] = { .fd = tfd, .events = POLL_IN, },
+	};
 	while (1) {
 		libt_flush();
-		waittime = libt_get_waittime();
-		if (waittime > 1000)
-			waittime = 1000;
-		ret = mosquitto_loop(mosq, waittime, 1);
-		if (ret)
-			mylog(LOG_ERR, "mosquitto_loop: %s", mosquitto_strerror(ret));
+		if (mosquitto_want_write(mosq)) {
+			ret = mosquitto_loop_write(mosq, 1);
+			if (ret)
+				mylog(LOG_ERR, "mosquitto_loop_write: %s", mosquitto_strerror(ret));
+		}
+		ret = poll(pf, 2, libt_get_waittime());
+		if (ret < 0 && errno == EINTR)
+			continue;
+		if (ret < 0)
+			mylog(LOG_ERR, "poll ...");
+		if (pf[0].revents) {
+			/* mqtt read ... */
+			ret = mosquitto_loop_read(mosq, 1);
+			if (ret) {
+				mylog(LOG_WARNING, "mosquitto_loop_read: %s", mosquitto_strerror(ret));
+				break;
+			}
+		}
+		if (pf[1].revents) {
+			uint64_t tfd_val;
+
+			ret = read(tfd, &tfd_val, sizeof(tfd_val));
+			if (ret < 0 && errno == EINTR)
+				continue;
+			else if (ret < 0)
+				mylog(LOG_ERR, "read timerfd: %s", ESTR(errno));
+
+			else for (it = items; it; it = it->next) {
+				if (tfd_setp && it->scheduled == tfd_setp)
+					/* this alarm shoudl fire now */
+					on_alrm(it);
+			}
+			/* re-arm */
+			arm_timerfd();
+		}
 	}
 	return 0;
 }

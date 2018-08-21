@@ -20,6 +20,10 @@
 #include "lib/libt.h"
 #include "common.h"
 
+#ifndef TFD_TIMER_CANCEL_ON_SET
+#define TFD_TIMER_CANCEL_ON_SET (1 << 1)
+#endif
+
 #define NAME "mqttalrm"
 #ifndef VERSION
 #define VERSION "<undefined version>"
@@ -273,10 +277,30 @@ static void arm_timerfd(void)
 			.tv_sec = next,
 		},
 	};
-	ret = timerfd_settime(tfd, TFD_TIMER_ABSTIME, &spec, NULL);
+	ret = timerfd_settime(tfd, TFD_TIMER_ABSTIME | TFD_TIMER_CANCEL_ON_SET, &spec, NULL);
 	if (ret < 0)
 		mylog(LOG_ERR, "timerfd_settime: %s", ESTR(errno));
 	tfd_setp = next;
+}
+
+static void time_changed(void)
+{
+	struct item *it;
+	time_t tnow;
+
+	mylog(LOG_WARNING, "time change detected, rescheduling ...");
+	time(&tnow);
+	for (it = items; it; it = it->next) {
+		if (it->scheduled && it->scheduled >= tnow && it->scheduled < tnow+(it->snooze_time ?: 60))
+			/* fire the alarm right here */
+			on_alrm(it);
+		else if (it->scheduled) {
+			/* recalculate, only when it was already scheduled */
+			it->scheduled = next_alarm(it, tnow);
+			mylog(LOG_INFO, "scheduled '%s' in %lus", it->topic, it->scheduled - tnow);
+		}
+	}
+	/* arm the timerfd is done in main() */
 }
 
 /* dismiss & reschedule do the same thing */
@@ -558,6 +582,8 @@ int main(int argc, char *argv[])
 			ret = read(tfd, &tfd_val, sizeof(tfd_val));
 			if (ret < 0 && errno == EINTR)
 				continue;
+			else if (ret < 0 && errno == ECANCELED)
+				time_changed();
 			else if (ret < 0)
 				mylog(LOG_ERR, "read timerfd: %s", ESTR(errno));
 

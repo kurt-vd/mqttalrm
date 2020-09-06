@@ -210,6 +210,19 @@ static void drop_item(struct item *it)
 	free(it);
 }
 
+static void pub_alrm_count(void)
+{
+	struct item *it;
+	int n;
+	char sval[32];
+
+	for (it = items, n = 0; it; it = it->next)
+		if (it->state == ALRM_ON)
+			++n;
+	sprintf(sval, "%u", n);
+	mosquitto_publish(mosq, NULL, "state/alrm/on", strlen(sval), sval, mqtt_qos, 1);
+}
+
 static void pub_alrm_event(struct item *it)
 {
 	static char alltopic[32];
@@ -224,6 +237,7 @@ static void pub_alrm_state(struct item *it)
 
 	mosquitto_publish(mosq, NULL, it->topic,
 			strlen(state), state, mqtt_qos, 1);
+	pub_alrm_count();
 }
 
 /* timeout handlers */
@@ -436,6 +450,7 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 		mylog(LOG_INFO, "new state %s = '%s'", msg->topic, alrm_states[val]);
 		it->state = val;
 		pub_alrm_event(it);
+		pub_alrm_count();
 		switch (val) {
 		case ALRM_OFF:
 			dismiss_alrm(it);

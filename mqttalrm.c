@@ -593,6 +593,7 @@ int main(int argc, char *argv[])
 		}
 		if (pf[1].revents) {
 			uint64_t tfd_val;
+			time_t saved_setp = tfd_setp;
 
 			ret = read(tfd, &tfd_val, sizeof(tfd_val));
 			if (ret < 0 && errno == EINTR)
@@ -603,8 +604,8 @@ int main(int argc, char *argv[])
 				mylog(LOG_ERR, "read timerfd: %s", ESTR(errno));
 
 			else for (it = items; it; it = it->next) {
-				if (tfd_setp && it->scheduled == tfd_setp)
-					/* this alarm shoudl fire now */
+				if (saved_setp && it->scheduled && it->scheduled <= saved_setp)
+					/* this alarm should fire now */
 					on_alrm(it);
 			}
 			/* re-arm */

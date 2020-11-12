@@ -1,7 +1,6 @@
 # output
 /mqttalrm
 /mqttimer
-/mqttimesw
 
 # temp
 *.o

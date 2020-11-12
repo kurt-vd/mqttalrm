@@ -1,6 +1,5 @@
 PROGS	= mqttalrm
 PROGS	+= mqttimer
-PROGS	+= mqttimesw
 default	: $(PROGS)
 
 PREFIX	= /usr/local
@@ -20,8 +19,6 @@ CPPFLAGS += -DVERSION=\"$(VERSION)\"
 mqttalrm: lib/libt.o common.o
 
 mqttimer: lib/libt.o
-
-mqttimesw: lib/libt.o common.o
 
 install: $(PROGS)
 	$(foreach PROG, $(PROGS), install -vp -m 0777 $(INSTOPTS) $(PROG) $(DESTDIR)$(PREFIX)/bin/$(PROG);)

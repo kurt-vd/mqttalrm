@@ -108,6 +108,7 @@ struct item {
 	int valid; /* definition has been seen */
 
 	int state;
+	int once;
 	int pubstate;
 	int snooze_time;
 	time_t scheduled;
@@ -132,6 +133,7 @@ time_t next_alarm(const struct item *it, time_t tnow)
 		tm.tm_mday += 1;
 		tnext = mktime_dstsafe(&tm);
 	}
+	if (it->wdays)
 	for (j = 0; j < 7; ++j) {
 		if (it->wdays & (1 << tm.tm_wday))
 			break;
@@ -250,6 +252,7 @@ static void on_alrm(void *dat)
 {
 	struct item *it = dat;
 
+	it->once = 0;
 	if (it->state == ALRM_SKIP) {
 		it->state = ALRM_OFF;
 		pub_alrm_state(it);
@@ -332,7 +335,7 @@ static void reschedule_alrm(struct item *it)
 	case ALRM_SNOOZED:
 	case ALRM_OFF:
 		it->state = ALRM_OFF;
-		if (!it->wdays) {
+		if (!it->once && !it->wdays) {
 			/* no repeat, must enable manually */
 			it->state = ALRM_DISABLED;
 			break;
@@ -362,6 +365,9 @@ static void alarm_cmd(struct item *it, const char *cmd)
 		snooze_alrm(it);
 
 	} else if (!strcmp(cmd, "skip")) {
+		if (!it->wdays)
+			/* can't skip non-repeating alarms */
+			return;
 		if (it->state != ALRM_DISABLED) {
 			it->state = ALRM_SKIP;
 			reschedule_alrm(it);
@@ -371,6 +377,7 @@ static void alarm_cmd(struct item *it, const char *cmd)
 		if (it->state == ALRM_DISABLED) {
 			mylog(LOG_INFO, "enabled '%s'", it->topic);
 			it->state = ALRM_OFF;
+			it->once = 1;
 			reschedule_alrm(it);
 		}
 
@@ -378,6 +385,7 @@ static void alarm_cmd(struct item *it, const char *cmd)
 		if (it->state != ALRM_DISABLED) {
 			mylog(LOG_INFO, "disabled '%s'", it->topic);
 			it->state = ALRM_DISABLED;
+			it->once = 0;
 			reschedule_alrm(it);
 		}
 

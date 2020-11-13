@@ -79,11 +79,15 @@ static int mqtt_qos = 1;
 /* alarm states */
 static const char *const alrm_states[] = {
 #define ALRM_OFF	0
-	[0] = "0",
+	[ALRM_OFF] = "wait",
 #define ALRM_ON		1
-	[1] = "1",
+	[ALRM_ON] = "on",
 #define ALRM_SNOOZED	2
-	[2] = "snoozed",
+	[ALRM_SNOOZED] = "snoozed",
+#define ALRM_SKIP	3
+	[ALRM_SKIP] = "skip",
+#define ALRM_DISABLED	4
+	[ALRM_DISABLED] = "disable",
 };
 
 /* state */
@@ -102,10 +106,9 @@ struct item {
 	int hhmm;
 	int wdays; /* bitmask */
 	int valid; /* definition has been seen */
-	int enabled;
-	int skip;
 
 	int state;
+	int pubstate;
 	int snooze_time;
 	time_t scheduled;
 };
@@ -178,6 +181,7 @@ static struct item *get_item(const char *topic, const char *suffix, int create)
 	/* not found, create one */
 	it = malloc(sizeof(*it));
 	memset(it, 0, sizeof(*it));
+	it->pubstate = -1; /* make it never match */
 	/* assign dup'd topic to item, no need to dup twice, no need to free */
 	it->topic = strndup(topic, len);
 	it->topiclen = strlen(it->topic);
@@ -187,7 +191,6 @@ static struct item *get_item(const char *topic, const char *suffix, int create)
 	else
 		it->namepos = 0;
 
-	it->enabled = 1;
 	it->wdays = 0x7f; /* all days */
 	/* insert in linked list */
 	it->next = items;
@@ -210,34 +213,34 @@ static void drop_item(struct item *it)
 	free(it);
 }
 
-static void pub_alrm_count(void)
-{
-	struct item *it;
-	int n;
-	char sval[32];
-
-	for (it = items, n = 0; it; it = it->next)
-		if (it->state == ALRM_ON)
-			++n;
-	sprintf(sval, "%u", n);
-	mosquitto_publish(mosq, NULL, "state/alrm/on", strlen(sval), sval, mqtt_qos, 1);
-}
-
-static void pub_alrm_event(struct item *it)
-{
-	static char alltopic[32];
-
-	sprintf(alltopic, "state/alrm/%s", alrm_states[it->state]);
-	mosquitto_publish(mosq, NULL, alltopic, it->topiclen - it->namepos, it->topic+it->namepos, mqtt_qos, 0);
-}
-
 static void pub_alrm_state(struct item *it)
 {
 	const char *state = alrm_states[it->state];
+	static int lastcnt = -1;
 
-	mosquitto_publish(mosq, NULL, it->topic,
-			strlen(state), state, mqtt_qos, 1);
-	pub_alrm_count();
+	if (it->pubstate != it->state)
+		mosquitto_publish(mosq, NULL, csprintf("%s/state", it->topic),
+				strlen(state), state, mqtt_qos, 1);
+	if ((it->pubstate == ALRM_ON) != (it->state == ALRM_ON))
+		mosquitto_publish(mosq, NULL, it->topic,
+				1, (it->state == ALRM_ON) ? "1" : "0", mqtt_qos, 1);
+	if (it->pubstate != it->state)
+		mosquitto_publish(mosq, NULL, csprintf("state/alrm/%s", alrm_states[it->state]),
+				it->topiclen - it->namepos, it->topic+it->namepos, mqtt_qos, 0);
+	it->pubstate = it->state;
+
+	/* publish total count */
+	int n;
+	for (it = items, n = 0; it; it = it->next)
+		if (it->state == ALRM_ON)
+			++n;
+
+	if (n != lastcnt) {
+		char sval[32];
+		sprintf(sval, "%i", n);
+		mosquitto_publish(mosq, NULL, "state/alrm/on", strlen(sval), sval, mqtt_qos, 1);
+		lastcnt = n;
+	}
 }
 
 /* timeout handlers */
@@ -245,33 +248,29 @@ static void on_alrm(void *dat)
 {
 	struct item *it = dat;
 
-	if (it->skip && (it->state == ALRM_OFF)) {
-		mosquitto_publish(mosq, NULL, csprintf("%s/skip", it->topic),
-				0, NULL, mqtt_qos, 1);
-		it->skip = 0;
+	if (it->state == ALRM_SKIP) {
+		it->state = ALRM_OFF;
+		pub_alrm_state(it);
 		reschedule_alrm(it);
 		return;
 	}
 	it->scheduled = 0;
 	it->state = ALRM_ON;
 	pub_alrm_state(it);
-	pub_alrm_event(it);
 }
 
 static void snooze_alrm(struct item *it)
 {
-	if (!it->valid || !it->wdays) {
-		/* effectively dismiss the alarm */
-		reschedule_alrm(it);
+	if (it->state != ALRM_ON) {
+		/* cannot snooze an idle alarm */
 		return;
 	}
+	if (!it->snooze_time)
+		it->snooze_time = 600;
 	libt_add_timeout(it->snooze_time, on_alrm, it);
 	mylog(LOG_INFO, "snoozed %s for %us", it->topic, it->snooze_time);
-	if (it->state != ALRM_SNOOZED) {
-		it->state = ALRM_SNOOZED;
-		pub_alrm_state(it);
-		pub_alrm_event(it);
-	}
+	it->state = ALRM_SNOOZED;
+	pub_alrm_state(it);
 }
 
 static void arm_timerfd(void)
@@ -322,24 +321,64 @@ static void time_changed(void)
 static void reschedule_alrm(struct item *it)
 {
 	libt_remove_timeout(on_alrm, it);
-	if (it->state != ALRM_OFF) {
-		it->state = ALRM_OFF;
-		pub_alrm_state(it);
-		pub_alrm_event(it);
-	}
 	it->scheduled = 0;
-	if (!it->valid || !it->enabled)
-		;
-	else if (!it->wdays)
-		mylog(LOG_INFO, "no days selected for '%s'", it->topic);
-	else {
+
+	switch (it->state) {
+	case ALRM_DISABLED:
+		break;
+	case ALRM_ON:
+	case ALRM_SNOOZED:
+	case ALRM_OFF:
+		it->state = ALRM_OFF;
+		if (!it->wdays) {
+			/* no repeat, must enable manually */
+			it->state = ALRM_DISABLED;
+			break;
+		}
+	case ALRM_SKIP:
+		if (!it->valid)
+			break;
 		time_t tnow;
 
 		time(&tnow);
 		it->scheduled = next_alarm(it, tnow);
 		mylog(LOG_INFO, "scheduled '%s' in %lus", it->topic, it->scheduled - tnow);
+		break;
 	}
+	pub_alrm_state(it);
 	arm_timerfd();
+}
+
+static void alarm_cmd(struct item *it, const char *cmd)
+{
+	if (!cmd) {
+
+	} else if (!strcmp(cmd, "dismiss")) {
+		dismiss_alrm(it);
+
+	} else if (!strcmp(cmd, "snooze")) {
+		snooze_alrm(it);
+
+	} else if (!strcmp(cmd, "skip")) {
+		if (it->state != ALRM_DISABLED) {
+			it->state = ALRM_SKIP;
+			reschedule_alrm(it);
+		}
+
+	} else if (!strcmp(cmd, "enable")) {
+		if (it->state == ALRM_DISABLED) {
+			mylog(LOG_INFO, "enabled '%s'", it->topic);
+			it->state = ALRM_OFF;
+			reschedule_alrm(it);
+		}
+
+	} else if (!strcmp(cmd, "disable")) {
+		if (it->state != ALRM_DISABLED) {
+			mylog(LOG_INFO, "disabled '%s'", it->topic);
+			it->state = ALRM_DISABLED;
+			reschedule_alrm(it);
+		}
+	}
 }
 
 static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitto_message *msg)
@@ -350,32 +389,18 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 
 	tok = strrchr(msg->topic ?: "", '/') ?: "";
 
-	if (!strcmp(tok, "/dismiss")) {
+	if (!strcmp(tok, "/cmd")) {
 		if ((tok > msg->topic) && (*(tok-1) == '/')) {
 			/* global ctrl, like 'pre/fix//dismiss' */
-			for (it = items; it; it = it->next) {
-				if (it->state != ALRM_OFF)
-					dismiss_alrm(it);
-			}
+			for (it = items; it; it = it->next)
+				alarm_cmd(it, (const char *)msg->payload);
 		} else {
 			/* 1 alarm, like 'pre/fix/name/dismiss' */
 			it = get_item(msg->topic, tok, 0);
 			if (it)
-				dismiss_alrm(it);
+				alarm_cmd(it, (const char *)msg->payload);
 		}
-	} else if (!strcmp(tok, "/snooze")) {
-		if ((tok > msg->topic) && (*(tok-1) == '/')) {
-			/* global ctrl, like 'pre/fix//dismiss' */
-			for (it = items; it; it = it->next) {
-				if (it->state != ALRM_OFF)
-					snooze_alrm(it);
-			}
-		} else {
-			/* 1 alarm, like 'pre/fix/name/dismiss' */
-			it = get_item(msg->topic, tok, 0);
-			if (it && (it->state != ALRM_OFF))
-				snooze_alrm(it);
-		}
+
 	} else if (!strcmp(tok, "/alarm")) {
 		it = get_item(msg->topic, tok, !!msg->payloadlen);
 		if (!msg->payloadlen) {
@@ -383,10 +408,6 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 				return;
 			/* flush potential MQTT leftovers */
 			mosquitto_publish(mosq, NULL, csprintf("%s/repeat", it->topic),
-					0, NULL, mqtt_qos, 1);
-			mosquitto_publish(mosq, NULL, csprintf("%s/skip", it->topic),
-					0, NULL, mqtt_qos, 1);
-			mosquitto_publish(mosq, NULL, csprintf("%s/enable", it->topic),
 					0, NULL, mqtt_qos, 1);
 			mosquitto_publish(mosq, NULL, csprintf("%s/snoozetime", it->topic),
 					0, NULL, mqtt_qos, 1);
@@ -405,18 +426,7 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 		it = get_item(msg->topic, tok, 1);
 		it->wdays = strtowdays(msg->payload ?: "");
 		reschedule_alrm(it);
-	} else if (!strcmp(tok, "/skip")) {
-		it = get_item(msg->topic, tok, 1);
-		it->skip = strtoul(msg->payload ?: "0", 0, 0);
-	} else if (!strcmp(tok, "/enable")) {
-		it = get_item(msg->topic, tok, 1);
-		val = strtoul(msg->payload ?: "1", 0, 0);
 
-		if (val != it->enabled) {
-			mylog(LOG_INFO, "%s '%s'", val ? "enabled" : "disabled", it->topic);
-			it->enabled = val;
-			reschedule_alrm(it);
-		}
 	} else if (!strcmp(tok, "/snoozetime")) {
 		it = get_item(msg->topic, tok, 1);
 		val = strtoul(msg->payload ?: "0", &endp, 0);
@@ -432,8 +442,8 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 			break;
 		}
 		it->snooze_time = val;
-	} else { // if (!strcmp(tok, "/state")) {
-		it = get_item(msg->topic, "", 0);
+	} else if (!strcmp(tok, "/state") && msg->retain) {
+		it = get_item(msg->topic, "/state", 1);
 		if (!it)
 			return;
 
@@ -444,19 +454,16 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 		if (val >= sizeof(alrm_states)/sizeof(alrm_states[0]))
 			/* bad state supplied */
 			return;
-		if (it->state == val)
-			/* nothing to do */
-			return;
-		mylog(LOG_INFO, "new state %s = '%s'", msg->topic, alrm_states[val]);
+		mylog(LOG_INFO, "new state %s = '%s'", it->topic, alrm_states[val]);
 		it->state = val;
-		pub_alrm_event(it);
-		pub_alrm_count();
 		switch (val) {
 		case ALRM_OFF:
-			dismiss_alrm(it);
+		case ALRM_SKIP:
+			reschedule_alrm(it);
 			break;
 		case ALRM_ON:
 			libt_remove_timeout(on_alrm, it);
+			it->scheduled = 0;
 			break;
 		case ALRM_SNOOZED:
 			if (!it->snooze_time) {
@@ -465,8 +472,12 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 				break;
 			}
 			libt_add_timeout(it->snooze_time, on_alrm, it);
+			it->scheduled = 0;
+			break;
+		case ALRM_DISABLED:
 			break;
 		}
+		pub_alrm_state(it);
 	}
 }
 

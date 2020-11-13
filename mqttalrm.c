@@ -125,7 +125,7 @@ time_t next_alarm(const struct item *it, time_t tnow)
 	tm.tm_min = it->hhmm % 100;
 	tm.tm_sec = 0;
 	tnext = mktime_dstsafe(&tm);
-	if (tnext <= tnow) {
+	if (tnext <= (tnow + 1)) {
 		tm.tm_mday += 1;
 		tnext = mktime_dstsafe(&tm);
 	}

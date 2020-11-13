@@ -170,6 +170,9 @@ static struct item *get_item(const char *topic, const char *suffix, int create)
 	len = strlen(topic ?: "") - strlen(suffix ?: "");
 	if (len <= 0)
 		return NULL;
+	if (strcmp(topic+len, suffix) != 0)
+		return NULL;
+
 	for (it = items; it; it = it->next) {
 		if ((it->topiclen == len) && !strncmp(it->topic ?: "", topic, len))
 			return it;
@@ -381,35 +384,41 @@ static void alarm_cmd(struct item *it, const char *cmd)
 	}
 }
 
+static int strendswith(const char *topic, const char *suffix)
+{
+	int slen = strlen(suffix ?: 0);
+	int tlen = strlen(topic ?: 0);
+
+	if (tlen < slen)
+		return 0;
+	return !strcmp(topic+tlen-slen, suffix);
+}
+
 static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitto_message *msg)
 {
 	int ret, val;
-	char *tok, *endp;
+	char *endp;
 	struct item *it;
 
-	tok = strrchr(msg->topic ?: "", '/') ?: "";
+	if (strendswith(msg->topic, "/cmd") && (strlen(msg->topic) >= 5) && msg->topic[strlen(msg->topic)-5] == '/') {
+		/* global ctrl, like 'pre/fix//dismiss' */
+		for (it = items; it; it = it->next)
+			alarm_cmd(it, (const char *)msg->payload);
 
-	if (!strcmp(tok, "/cmd")) {
-		if ((tok > msg->topic) && (*(tok-1) == '/')) {
-			/* global ctrl, like 'pre/fix//dismiss' */
-			for (it = items; it; it = it->next)
-				alarm_cmd(it, (const char *)msg->payload);
-		} else {
-			/* 1 alarm, like 'pre/fix/name/dismiss' */
-			it = get_item(msg->topic, tok, 0);
-			if (it)
-				alarm_cmd(it, (const char *)msg->payload);
-		}
+	} else if ((it = get_item(msg->topic, "/cmd", 0)) != NULL) {
+		alarm_cmd(it, (const char *)msg->payload);
 
-	} else if (!strcmp(tok, "/alarm")) {
-		it = get_item(msg->topic, tok, !!msg->payloadlen);
+	} else if ((it = get_item(msg->topic, "/alarm", !!msg->payloadlen)) != NULL) {
 		if (!msg->payloadlen) {
 			if (!it)
+				/* is never true */
 				return;
 			/* flush potential MQTT leftovers */
 			mosquitto_publish(mosq, NULL, csprintf("%s/repeat", it->topic),
 					0, NULL, mqtt_qos, 1);
 			mosquitto_publish(mosq, NULL, csprintf("%s/snoozetime", it->topic),
+					0, NULL, mqtt_qos, 1);
+			mosquitto_publish(mosq, NULL, csprintf("%s/state", it->topic),
 					0, NULL, mqtt_qos, 1);
 			mosquitto_publish(mosq, NULL, it->topic, 0, NULL, mqtt_qos, 1);
 			drop_item(it);
@@ -422,13 +431,11 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 			it->valid = 1;
 			reschedule_alrm(it);
 		}
-	} else if (!strcmp(tok, "/repeat")) {
-		it = get_item(msg->topic, tok, 1);
+	} else if ((it = get_item(msg->topic, "/repeat", !!msg->payloadlen)) != NULL) {
 		it->wdays = strtowdays(msg->payload ?: "");
 		reschedule_alrm(it);
 
-	} else if (!strcmp(tok, "/snoozetime")) {
-		it = get_item(msg->topic, tok, 1);
+	} else if ((it = get_item(msg->topic, "/snoozetime", !!msg->payloadlen)) != NULL) {
 		val = strtoul(msg->payload ?: "0", &endp, 0);
 		switch (*endp) {
 		case 'w':
@@ -442,11 +449,8 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 			break;
 		}
 		it->snooze_time = val;
-	} else if (!strcmp(tok, "/state") && msg->retain) {
-		it = get_item(msg->topic, "/state", 1);
-		if (!it)
-			return;
 
+	} else if (msg->retain && (it = get_item(msg->topic, "/state", !!msg->payloadlen)) != NULL) {
 		for (val = 0; val < sizeof(alrm_states)/sizeof(alrm_states[0]); ++val) {
 			if (!strcmp(msg->payload, alrm_states[val]))
 				break;

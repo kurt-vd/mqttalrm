@@ -381,6 +381,12 @@ static void alarm_cmd(struct item *it, const char *cmd)
 			it->state = ALRM_DISABLED;
 			reschedule_alrm(it);
 		}
+
+	} else if (!strcmp(cmd, "force")) {
+		libt_remove_timeout(on_alrm, it);
+		it->scheduled = 0;
+		it->state = ALRM_ON;
+		pub_alrm_state(it);
 	}
 }
 

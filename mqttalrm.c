@@ -194,7 +194,6 @@ static struct item *get_item(const char *topic, const char *suffix, int create)
 	else
 		it->namepos = 0;
 
-	it->wdays = 0x7f; /* all days */
 	/* insert in linked list */
 	it->next = items;
 	if (it->next) {

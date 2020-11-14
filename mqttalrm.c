@@ -109,6 +109,8 @@ struct item {
 
 	int state;
 	int once;
+	/* flag to know if alarm was individually disabled */
+	int disabledfromall;
 	int pubstate;
 	int snooze_time;
 	time_t scheduled;
@@ -354,7 +356,7 @@ static void reschedule_alrm(struct item *it)
 	arm_timerfd();
 }
 
-static void alarm_cmd(struct item *it, const char *cmd)
+static void alarm_cmd(struct item *it, const char *cmd, int for_all)
 {
 	if (!cmd) {
 
@@ -375,6 +377,8 @@ static void alarm_cmd(struct item *it, const char *cmd)
 
 	} else if (!strcmp(cmd, "enable")) {
 		if (it->state == ALRM_DISABLED) {
+			if (for_all && !it->disabledfromall)
+				return;
 			mylog(LOG_INFO, "enabled '%s'", it->topic);
 			it->state = ALRM_OFF;
 			it->once = 1;
@@ -386,6 +390,7 @@ static void alarm_cmd(struct item *it, const char *cmd)
 			mylog(LOG_INFO, "disabled '%s'", it->topic);
 			it->state = ALRM_DISABLED;
 			it->once = 0;
+			it->disabledfromall = for_all;
 			reschedule_alrm(it);
 		}
 
@@ -416,10 +421,10 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 	if (strendswith(msg->topic, "/cmd") && (strlen(msg->topic) >= 5) && msg->topic[strlen(msg->topic)-5] == '/') {
 		/* global ctrl, like 'pre/fix//dismiss' */
 		for (it = items; it; it = it->next)
-			alarm_cmd(it, (const char *)msg->payload);
+			alarm_cmd(it, (const char *)msg->payload, 1);
 
 	} else if ((it = get_item(msg->topic, "/cmd", 0)) != NULL) {
-		alarm_cmd(it, (const char *)msg->payload);
+		alarm_cmd(it, (const char *)msg->payload, 0);
 
 	} else if ((it = get_item(msg->topic, "/alarm", !!msg->payloadlen)) != NULL) {
 		if (!msg->payloadlen) {

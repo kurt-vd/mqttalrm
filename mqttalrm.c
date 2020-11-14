@@ -256,9 +256,14 @@ static void on_alrm(void *dat)
 
 	it->once = 0;
 	if (it->state == ALRM_SKIP) {
-		it->state = ALRM_OFF;
-		pub_alrm_state(it);
-		reschedule_alrm(it);
+		/* clear ALL skipped alarms */
+		for (it = items; it; it = it->next) {
+			if (it->state == ALRM_SKIP) {
+				it->state = ALRM_OFF;
+				pub_alrm_state(it);
+				reschedule_alrm(it);
+			}
+		}
 		return;
 	}
 	it->scheduled = 0;
@@ -372,6 +377,12 @@ static void alarm_cmd(struct item *it, const char *cmd, int for_all)
 			return;
 		if (it->state != ALRM_DISABLED) {
 			it->state = ALRM_SKIP;
+			reschedule_alrm(it);
+		}
+
+	} else if (!strcmp(cmd, "noskip")) {
+		if (it->state == ALRM_SKIP) {
+			it->state = ALRM_OFF;
 			reschedule_alrm(it);
 		}
 

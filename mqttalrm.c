@@ -230,9 +230,6 @@ static void pub_alrm_state(struct item *it)
 	if ((it->pubstate == ALRM_ON) != (it->state == ALRM_ON))
 		mosquitto_publish(mosq, NULL, it->topic,
 				1, (it->state == ALRM_ON) ? "1" : "0", mqtt_qos, 1);
-	if (it->pubstate != it->state)
-		mosquitto_publish(mosq, NULL, csprintf("state/alrm/%s", alrm_states[it->state]),
-				it->topiclen - it->namepos, it->topic+it->namepos, mqtt_qos, 0);
 	it->pubstate = it->state;
 
 	/* publish total count */

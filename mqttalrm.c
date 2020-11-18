@@ -88,6 +88,8 @@ static const char *const alrm_states[] = {
 	[ALRM_SKIP] = "skip",
 #define ALRM_DISABLED	4
 	[ALRM_DISABLED] = "disable",
+#define ALRM_ALL_DISABLED	5
+	[ALRM_ALL_DISABLED] = "disableall",
 };
 
 /* state */
@@ -110,7 +112,6 @@ struct item {
 	int state;
 	int once;
 	/* flag to know if alarm was individually disabled */
-	int disabledfromall;
 	int pubstate;
 	int snooze_time;
 	time_t scheduled;
@@ -334,6 +335,7 @@ static void reschedule_alrm(struct item *it)
 
 	switch (it->state) {
 	case ALRM_DISABLED:
+	case ALRM_ALL_DISABLED:
 		break;
 	case ALRM_ON:
 	case ALRM_SNOOZED:
@@ -341,7 +343,7 @@ static void reschedule_alrm(struct item *it)
 		it->state = ALRM_OFF;
 		if (!it->once && !it->wdays) {
 			/* no repeat, must enable manually */
-			it->state = ALRM_DISABLED;
+			it->state = ALRM_ALL_DISABLED;
 			break;
 		}
 	case ALRM_SKIP:
@@ -372,7 +374,7 @@ static void alarm_cmd(struct item *it, const char *cmd, int for_all)
 		if (!it->wdays)
 			/* can't skip non-repeating alarms */
 			return;
-		if (it->state != ALRM_DISABLED) {
+		if (it->state != ALRM_DISABLED && it->state != ALRM_ALL_DISABLED) {
 			it->state = ALRM_SKIP;
 			reschedule_alrm(it);
 		}
@@ -384,9 +386,7 @@ static void alarm_cmd(struct item *it, const char *cmd, int for_all)
 		}
 
 	} else if (!strcmp(cmd, "enable")) {
-		if (it->state == ALRM_DISABLED) {
-			if (for_all && !it->disabledfromall)
-				return;
+		if ((it->state == ALRM_DISABLED && !for_all) || it->state == ALRM_ALL_DISABLED) {
 			mylog(LOG_INFO, "enabled '%s'", it->topic);
 			it->state = ALRM_OFF;
 			it->once = 1;
@@ -394,11 +394,11 @@ static void alarm_cmd(struct item *it, const char *cmd, int for_all)
 		}
 
 	} else if (!strcmp(cmd, "disable")) {
-		if (it->state != ALRM_DISABLED) {
+		if ((it->state != ALRM_DISABLED && !for_all) ||
+				(it->state != ALRM_DISABLED && it->state != ALRM_ALL_DISABLED && for_all)) {
 			mylog(LOG_INFO, "disabled '%s'", it->topic);
-			it->state = ALRM_DISABLED;
+			it->state = for_all ? ALRM_ALL_DISABLED : ALRM_DISABLED;
 			it->once = 0;
-			it->disabledfromall = for_all;
 			reschedule_alrm(it);
 		}
 
@@ -505,6 +505,8 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 			it->scheduled = 0;
 			break;
 		case ALRM_DISABLED:
+		case ALRM_ALL_DISABLED:
+			reschedule_alrm(it);
 			break;
 		}
 		pub_alrm_state(it);

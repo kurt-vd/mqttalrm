@@ -108,6 +108,7 @@ struct item {
 	int hhmm;
 	int wdays; /* bitmask */
 	int valid; /* definition has been seen */
+	double maxtime;
 
 	int state;
 	int once;
@@ -120,6 +121,7 @@ struct item {
 struct item *items;
 
 static void reschedule_alrm(struct item *it);
+static void on_alrm_done(void *dat);
 
 time_t next_alarm(const struct item *it, time_t tnow)
 {
@@ -199,6 +201,8 @@ static struct item *get_item(const char *topic, const char *suffix, int create)
 	else
 		it->namepos = 0;
 
+	it->maxtime = 3600;
+
 	/* insert in linked list */
 	it->next = items;
 	if (it->next) {
@@ -231,6 +235,11 @@ static void pub_alrm_state(struct item *it)
 	if ((it->pubstate == ALRM_ON) != (it->state == ALRM_ON))
 		mosquitto_publish(mosq, NULL, it->topic,
 				1, (it->state == ALRM_ON) ? "1" : "0", mqtt_qos, 1);
+	if (it->pubstate != ALRM_ON && it->state == ALRM_ON)
+		/* schedule turn-off */
+		libt_add_timeout(it->maxtime, on_alrm_done, it);
+	else if (it->pubstate == ALRM_ON && it->state != ALRM_ON)
+		libt_remove_timeout(on_alrm_done, it);
 	it->pubstate = it->state;
 
 	/* publish total count */
@@ -248,6 +257,12 @@ static void pub_alrm_state(struct item *it)
 }
 
 /* timeout handlers */
+static void on_alrm_done(void *dat)
+{
+	/* done with alrm, turn off */
+	reschedule_alrm(dat);
+}
+
 static void on_alrm(void *dat)
 {
 	struct item *it = dat;
@@ -420,6 +435,30 @@ static int strendswith(const char *topic, const char *suffix)
 	return !strcmp(topic+tlen-slen, suffix);
 }
 
+static double strtodelay(const char *str, char **pendp)
+{
+	char *endp;
+	double val;
+
+	if (!pendp)
+		pendp = &endp;
+
+	val = strtod(str, pendp);
+	switch (**pendp) {
+	case 'w':
+		val *= 7;
+	case 'd':
+		val *= 24;
+	case 'h':
+		val *= 60;
+	case 'm':
+		val *= 60;
+		++(*pendp);
+		break;
+	}
+	return val;
+}
+
 static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitto_message *msg)
 {
 	int ret, val;
@@ -444,6 +483,8 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 					0, NULL, mqtt_qos, 1);
 			mosquitto_publish(mosq, NULL, csprintf("%s/snoozetime", it->topic),
 					0, NULL, mqtt_qos, 1);
+			mosquitto_publish(mosq, NULL, csprintf("%s/maxtime", it->topic),
+					0, NULL, mqtt_qos, 1);
 			mosquitto_publish(mosq, NULL, csprintf("%s/state", it->topic),
 					0, NULL, mqtt_qos, 1);
 			mosquitto_publish(mosq, NULL, it->topic, 0, NULL, mqtt_qos, 1);
@@ -462,19 +503,10 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 		reschedule_alrm(it);
 
 	} else if ((it = get_item(msg->topic, "/snoozetime", !!msg->payloadlen)) != NULL) {
-		val = strtoul(msg->payload ?: "0", &endp, 0);
-		switch (*endp) {
-		case 'w':
-			val *= 7;
-		case 'd':
-			val *= 24;
-		case 'h':
-			val *= 60;
-		case 'm':
-			val *= 60;
-			break;
-		}
-		it->snooze_time = val;
+		it->snooze_time = strtodelay(msg->payload ?: "10m", &endp);
+
+	} else if ((it = get_item(msg->topic, "/maxtime", !!msg->payloadlen)) != NULL) {
+		it->maxtime = strtod(msg->payload ?: "1h", &endp);
 
 	} else if (msg->retain && (it = get_item(msg->topic, "/state", !!msg->payloadlen)) != NULL) {
 		for (val = 0; val < sizeof(alrm_states)/sizeof(alrm_states[0]); ++val) {

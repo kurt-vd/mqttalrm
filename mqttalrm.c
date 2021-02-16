@@ -514,7 +514,7 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 		it->snooze_time = strtodelay(msg->payload ?: "10m", &endp);
 
 	} else if ((it = get_item(msg->topic, "/maxtime", !!msg->payloadlen)) != NULL) {
-		it->maxtime = strtod(msg->payload ?: "1h", &endp);
+		it->maxtime = strtodelay(msg->payload ?: "1h", &endp);
 
 	} else if (msg->retain && (it = get_item(msg->topic, "/state", !!msg->payloadlen)) != NULL) {
 		for (val = 0; val < sizeof(alrm_states)/sizeof(alrm_states[0]); ++val) {

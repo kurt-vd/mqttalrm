@@ -259,7 +259,9 @@ static void pub_alrm_state(struct item *it)
 /* timeout handlers */
 static void on_alrm_done(void *dat)
 {
+	struct item *it = dat;
 	/* done with alrm, turn off */
+	mylog(LOG_INFO, "done '%s'", it->topic);
 	reschedule_alrm(dat);
 }
 
@@ -269,6 +271,7 @@ static void on_alrm(void *dat)
 
 	it->once = 0;
 	if (it->state == ALRM_SKIP) {
+		mylog(LOG_INFO, "skip '%s'", it->topic);
 		/* clear ALL skipped alarms */
 		for (it = items; it; it = it->next) {
 			if (it->state == ALRM_SKIP) {
@@ -279,6 +282,7 @@ static void on_alrm(void *dat)
 		}
 		return;
 	}
+	mylog(LOG_INFO, "raise '%s'", it->topic);
 	it->scheduled = 0;
 	it->state = ALRM_ON;
 	pub_alrm_state(it);
@@ -380,6 +384,7 @@ static void alarm_cmd(struct item *it, const char *cmd, int for_all)
 	if (!cmd) {
 
 	} else if (!strcmp(cmd, "dismiss")) {
+		mylog(LOG_INFO, "dismiss '%s'", it->topic);
 		dismiss_alrm(it);
 
 	} else if (!strcmp(cmd, "snooze")) {
@@ -390,12 +395,14 @@ static void alarm_cmd(struct item *it, const char *cmd, int for_all)
 			/* can't skip non-repeating alarms */
 			return;
 		if (it->state != ALRM_DISABLED && it->state != ALRM_ALL_DISABLED) {
+			mylog(LOG_INFO, "skip request '%s'", it->topic);
 			it->state = ALRM_SKIP;
 			reschedule_alrm(it);
 		}
 
 	} else if (!strcmp(cmd, "noskip")) {
 		if (it->state == ALRM_SKIP) {
+			mylog(LOG_INFO, "noskip request '%s'", it->topic);
 			it->state = ALRM_OFF;
 			reschedule_alrm(it);
 		}
@@ -418,6 +425,7 @@ static void alarm_cmd(struct item *it, const char *cmd, int for_all)
 		}
 
 	} else if (!strcmp(cmd, "force")) {
+		mylog(LOG_INFO, "forced '%s'", it->topic);
 		libt_remove_timeout(on_alrm, it);
 		it->scheduled = 0;
 		it->state = ALRM_ON;

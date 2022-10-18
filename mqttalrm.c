@@ -362,7 +362,7 @@ static void reschedule_alrm(struct item *it)
 		it->state = ALRM_OFF;
 		if (!it->once && !it->wdays) {
 			/* no repeat, must enable manually */
-			it->state = ALRM_ALL_DISABLED;
+			it->state = ALRM_DISABLED;
 			break;
 		}
 	case ALRM_SKIP:
